@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "map_name": "ThreeSoldiersCounterRing",
+  "map_file": "maps/ThreeSoldiersCounterRing.SC2Map",
+  "players": 2,
+  "race": "Terran",
+  "center": [
+    16.0,
+    16.0
+  ],
+  "radii": [
+    14.0,
+    11.0,
+    8.0,
+    5.0,
+    2.0
+  ],
+  "phase_start_seconds": [
+    0,
+    60,
+    120,
+    180,
+    240
+  ],
+  "damage_per_second": [
+    0,
+    2,
+    3,
+    4,
+    6
+  ],
+  "duration_seconds": 300,
+  "units": [
+    "Zealot",
+    "Zergling",
+    "Marine"
+  ],
+  "unit_type_ids": [
+    73,
+    105,
+    48
+  ],
+  "combat": {
+    "Zergling": {"role": "轻骑", "hp": 100, "speed": 4.0, "damage": 10, "attacks": 1, "period": 1.0, "range": 0.1, "armored": true, "bonus_vs_armored": 0},
+    "Zealot": {"role": "长枪", "hp": 100, "speed": 1.75, "damage": 4, "attacks": 2, "period": 1.2, "range": 0.1, "armored": false, "bonus_vs_armored": 11},
+    "Marine": {"role": "弓手", "hp": 60, "speed": 2.75, "damage": 6, "attacks": 1, "period": 0.85, "range": 5.0, "armored": false, "bonus_vs_armored": 0}
+  },
+  "win_rule": "alive_count",
+  "equal_count_result": "tie",
+  "boundary_inclusive": true,
+  "clock_verified": true,
+  "spawn_positions": [
+    [
+      6.0,
+      14.0
+    ],
+    [
+      6.0,
+      16.0
+    ],
+    [
+      6.0,
+      18.0
+    ],
+    [
+      26.0,
+      18.0
+    ],
+    [
+      26.0,
+      16.0
+    ],
+    [
+      26.0,
+      14.0
+    ]
+  ],
+  "game_seconds_per_loop": 0.0625,
+  "movement_speed_scale": 1.0,
+  "clock_source": "observation.score.score",
+  "clock_time_type": "Galaxy c_timeGame"
+}

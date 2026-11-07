@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "map_name": "ThreeSoldiersRing",
+  "map_file": "maps/ThreeSoldiersRing.SC2Map",
+  "players": 2,
+  "race": "Terran",
+  "center": [
+    16.0,
+    16.0
+  ],
+  "radii": [
+    14.0,
+    11.0,
+    8.0,
+    5.0,
+    2.0
+  ],
+  "phase_start_seconds": [
+    0,
+    60,
+    120,
+    180,
+    240
+  ],
+  "damage_per_second": [
+    0,
+    2,
+    3,
+    4,
+    6
+  ],
+  "duration_seconds": 300,
+  "units": [
+    "Marine",
+    "Marauder",
+    "Hellion"
+  ],
+  "unit_type_ids": [
+    48,
+    51,
+    53
+  ],
+  "win_rule": "alive_count",
+  "equal_count_result": "tie",
+  "boundary_inclusive": true,
+  "clock_verified": true,
+  "spawn_positions": [
+    [
+      6.0,
+      14.0
+    ],
+    [
+      6.0,
+      16.0
+    ],
+    [
+      6.0,
+      18.0
+    ],
+    [
+      26.0,
+      18.0
+    ],
+    [
+      26.0,
+      16.0
+    ],
+    [
+      26.0,
+      14.0
+    ]
+  ],
+  "game_seconds_per_loop": 0.0625,
+  "movement_speed_scale": 1.0,
+  "clock_source": "observation.score.score",
+  "clock_time_type": "Galaxy c_timeGame"
+}

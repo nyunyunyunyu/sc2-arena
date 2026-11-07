@@ -1,0 +1,43 @@
+// Generated from sc2/rules.json by maps/build.py.
+const bool arenaCustomCombat = true;
+const fixed arenaCenterX = 16.0;
+const fixed arenaCenterY = 16.0;
+const int arenaDuration = 300;
+fixed[5] arenaRadii;
+int[5] arenaStarts;
+fixed[5] arenaDamage;
+string[3] arenaTypes;
+fixed[6] arenaSpawnX;
+fixed[6] arenaSpawnY;
+void InitArenaRules () {
+    arenaRadii[0] = 14.0;
+    arenaRadii[1] = 11.0;
+    arenaRadii[2] = 8.0;
+    arenaRadii[3] = 5.0;
+    arenaRadii[4] = 2.0;
+    arenaStarts[0] = 0;
+    arenaStarts[1] = 60;
+    arenaStarts[2] = 120;
+    arenaStarts[3] = 180;
+    arenaStarts[4] = 240;
+    arenaDamage[0] = 0;
+    arenaDamage[1] = 2;
+    arenaDamage[2] = 3;
+    arenaDamage[3] = 4;
+    arenaDamage[4] = 6;
+    arenaTypes[0] = "Zealot";
+    arenaTypes[1] = "Zergling";
+    arenaTypes[2] = "Marine";
+    arenaSpawnX[0] = 6.0;
+    arenaSpawnY[0] = 14.0;
+    arenaSpawnX[1] = 6.0;
+    arenaSpawnY[1] = 16.0;
+    arenaSpawnX[2] = 6.0;
+    arenaSpawnY[2] = 18.0;
+    arenaSpawnX[3] = 26.0;
+    arenaSpawnY[3] = 18.0;
+    arenaSpawnX[4] = 26.0;
+    arenaSpawnY[4] = 16.0;
+    arenaSpawnX[5] = 26.0;
+    arenaSpawnY[5] = 14.0;
+}

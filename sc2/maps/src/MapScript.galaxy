@@ -1,0 +1,201 @@
+include "TriggerLibs/NativeLib"
+include "ArenaRules"
+
+unit[6] arenaUnits;
+unit[280] ringMarks;
+int[5] ringCounts;
+int[5] ringOffsets;
+int arenaTicks = 0;
+int arenaPhase = 0;
+int arenaHud;
+bool arenaFinished = false;
+
+void UpdateRings () {
+    int ring = 0;
+    int mark;
+    color tint;
+    while (ring < 5) {
+        tint = Color(75.0, 100.0, 100.0);
+        if (ring == arenaPhase) { tint = Color(100.0, 85.0, 10.0); }
+        mark = 0;
+        while (mark < ringCounts[ring]) {
+            libNtve_gf_SendActorMessageToUnit(ringMarks[ringOffsets[ring] + mark],
+                libNtve_gf_SetTintColor(tint, 2.0, 0.0));
+            if (ring == arenaPhase) {
+                UnitSetScale(ringMarks[ringOffsets[ring] + mark], 24.0, 24.0, 24.0);
+            }
+            else { UnitSetScale(ringMarks[ringOffsets[ring] + mark], 16.0, 16.0, 16.0); }
+            mark += 1;
+        }
+        ring += 1;
+    }
+}
+
+void UpdateHud () {
+    int seconds = arenaTicks / 16;
+    string next = "Final ring";
+    if (arenaPhase < 4) {
+        next = "Next ring: " + IntToString(arenaStarts[arenaPhase + 1] - seconds) + "s";
+    }
+    DialogControlSetPropertyAsText(arenaHud, c_triggerControlPropertyText, PlayerGroupAll(),
+        StringToText("THREE SOLDIERS  |  " + next + "  |  End: " +
+        IntToString(arenaDuration - seconds) + "s  |  Ring " + IntToString(arenaPhase + 1) + "/5"));
+    // The curriculum score is a public clock, never the match result.
+    PlayerModifyPropertyFixed(1, c_playerPropCurriculumScore, c_playerPropOperSetTo, arenaTicks / 16.0);
+    PlayerModifyPropertyFixed(2, c_playerPropCurriculumScore, c_playerPropOperSetTo, arenaTicks / 16.0);
+}
+
+void FinishArena (int count1, int count2) {
+    if (arenaFinished) { return; }
+    arenaFinished = true;
+    if (count1 == count2) {
+        GameOver(1, c_gameOverTie, true, true);
+        GameOver(2, c_gameOverTie, true, true);
+    }
+    else if (count1 > count2) {
+        GameOver(1, c_gameOverVictory, true, true);
+        GameOver(2, c_gameOverDefeat, true, true);
+    }
+    else {
+        GameOver(1, c_gameOverDefeat, true, true);
+        GameOver(2, c_gameOverVictory, true, true);
+    }
+}
+
+bool ArenaTick (bool testConds, bool runActions) {
+    int i = 0;
+    int count1 = 0;
+    int count2 = 0;
+    int seconds;
+    point position;
+    fixed dx;
+    fixed dy;
+    fixed life;
+    if (!runActions || arenaFinished) { return true; }
+    arenaTicks += 1;
+    seconds = arenaTicks / 16;
+    if (arenaPhase < 4 && seconds >= arenaStarts[arenaPhase + 1]) {
+        arenaPhase += 1;
+        UpdateRings();
+    }
+    // Apply the whole hazard tick before counting either team, so ties stay symmetric.
+    if (arenaTicks % 16 == 0 && arenaPhase > 0) {
+        while (i < 6) {
+            if (UnitIsAlive(arenaUnits[i])) {
+                position = UnitGetPosition(arenaUnits[i]);
+                dx = PointGetX(position) - arenaCenterX;
+                dy = PointGetY(position) - arenaCenterY;
+                if (dx * dx + dy * dy > arenaRadii[arenaPhase] * arenaRadii[arenaPhase]) {
+                    life = UnitGetPropertyFixed(arenaUnits[i], c_unitPropLife, true);
+                    if (life <= arenaDamage[arenaPhase]) { UnitKill(arenaUnits[i]); }
+                    else { UnitSetPropertyFixed(arenaUnits[i], c_unitPropLife, life - arenaDamage[arenaPhase]); }
+                }
+            }
+            i += 1;
+        }
+    }
+    i = 0;
+    while (i < 6) {
+        if (UnitIsAlive(arenaUnits[i])) {
+            if (i < 3) { count1 += 1; }
+            else { count2 += 1; }
+        }
+        i += 1;
+    }
+    UpdateHud();
+    if (count1 == 0 || count2 == 0 || seconds >= arenaDuration) { FinishArena(count1, count2); }
+    return true;
+}
+
+bool ArenaInit (bool testConds, bool runActions) {
+    int i = 0;
+    int player;
+    int ring = 0;
+    int mark;
+    int dialog;
+    int rulesLabel;
+    int abilityIndex;
+    string ability;
+    fixed angle;
+    point position;
+    trigger tick;
+    unit beacon;
+    if (!runActions) { return true; }
+    InitArenaRules();
+    ringCounts[0] = 96; ringCounts[1] = 76; ringCounts[2] = 56;
+    ringCounts[3] = 36; ringCounts[4] = 16;
+    ringOffsets[0] = 0; ringOffsets[1] = 96; ringOffsets[2] = 172;
+    ringOffsets[3] = 228; ringOffsets[4] = 264;
+    while (i < 6) {
+        player = 1;
+        if (i >= 3) { player = 2; }
+        UnitCreate(1, arenaTypes[i % 3], c_unitCreateIgnorePlacement, player,
+            Point(arenaSpawnX[i], arenaSpawnY[i]), (player - 1) * 180.0);
+        arenaUnits[i] = UnitLastCreated();
+        if (arenaCustomCombat) {
+            abilityIndex = 0;
+            while (abilityIndex < UnitAbilityCount(arenaUnits[i])) {
+                ability = UnitAbilityGet(arenaUnits[i], abilityIndex);
+                if (ability != "move" && ability != "attack" && ability != "stop") {
+                    UnitAbilityEnable(arenaUnits[i], ability, false);
+                    UnitAbilityShow(arenaUnits[i], ability, false);
+                }
+                abilityIndex += 1;
+            }
+        }
+        i += 1;
+    }
+    while (ring < 5) {
+        mark = 0;
+        while (mark < ringCounts[ring]) {
+            angle = mark * 360.0 / ringCounts[ring];
+            position = Point(arenaCenterX + arenaRadii[ring] * Cos(angle),
+                arenaCenterY + arenaRadii[ring] * Sin(angle));
+            // Neutral public geometry is excluded from the six combat-unit references.
+            UnitCreate(1, "Beacon_Terran", c_unitCreateIgnorePlacement, 0, position, 0.0);
+            beacon = UnitLastCreated();
+            ringMarks[ringOffsets[ring] + mark] = beacon;
+            UnitSetState(beacon, c_unitStateInvulnerable, true);
+            UnitSetState(beacon, c_unitStateSelectable, false);
+            UnitSetState(beacon, c_unitStateTargetable, false);
+            UnitSetState(beacon, c_unitStateHighlightable, false);
+            UnitSetState(beacon, c_unitStateStatusBar, false);
+            UnitSetState(beacon, c_unitStateTooltipable, false);
+            UnitSetState(beacon, c_unitStateCursorable, false);
+            mark += 1;
+        }
+        ring += 1;
+    }
+    dialog = DialogCreate(650, 60, c_anchorTop, 0, 12, false);
+    DialogSetVisible(dialog, PlayerGroupAll(), true);
+    arenaHud = DialogControlCreate(dialog, c_triggerControlTypeLabel);
+    DialogControlSetSize(arenaHud, PlayerGroupAll(), 630, 42);
+    DialogControlSetPosition(arenaHud, PlayerGroupAll(), c_anchorCenter, 0, 0);
+    DialogControlSetVisible(arenaHud, PlayerGroupAll(), true);
+    if (arenaCustomCombat) {
+        dialog = DialogCreate(620, 115, c_anchorTopLeft, 12, 75, false);
+        DialogSetVisible(dialog, PlayerGroupAll(), true);
+        rulesLabel = DialogControlCreate(dialog, c_triggerControlTypeLabel);
+        DialogControlSetSize(rulesLabel, PlayerGroupAll(), 600, 100);
+        DialogControlSetPosition(rulesLabel, PlayerGroupAll(), c_anchorTopLeft, 10, 8);
+        DialogControlSetPropertyAsText(rulesLabel, c_triggerControlPropertyText, PlayerGroupAll(),
+            StringExternal("Arena/CombatRules"));
+        DialogControlSetVisible(rulesLabel, PlayerGroupAll(), true);
+    }
+    UpdateRings();
+    UpdateHud();
+    CameraPan(1, Point(arenaCenterX, arenaCenterY), 0.0, -1.0, 10.0, false);
+    CameraPan(2, Point(arenaCenterX, arenaCenterY), 0.0, -1.0, 10.0, false);
+    CameraSetValue(1, c_cameraValueDistance, 60.0, 0.0, -1.0, 10.0);
+    CameraSetValue(2, c_cameraValueDistance, 60.0, 0.0, -1.0, 10.0);
+    tick = TriggerCreate("ArenaTick");
+    TriggerAddEventTimePeriodic(tick, 0.0625, c_timeGame);
+    return true;
+}
+
+void InitMap () {
+    trigger init;
+    libNtve_InitLib();
+    init = TriggerCreate("ArenaInit");
+    TriggerAddEventMapInit(init);
+}

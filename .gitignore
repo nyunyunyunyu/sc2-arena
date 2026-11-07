@@ -1,0 +1,7 @@
+.deps/
+.venv/
+.cache/
+.retro/
+__pycache__/
+*.py[cod]
+sc2/runs/

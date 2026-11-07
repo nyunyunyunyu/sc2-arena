@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Catalog>
+  <CUnit id="Zergling">
+    <LifeMax value="100" />
+    <LifeStart value="100" />
+    <LifeArmor value="0" />
+    <LifeRegenRate value="0" />
+    <ShieldsMax value="0" />
+    <ShieldsStart value="0" />
+    <ShieldRegenRate value="0" />
+    <Speed value="4.0" />
+    <SpeedMultiplierCreep value="1" />
+    <Attributes index="Light" value="0" />
+    <Attributes index="Armored" value="1" />
+  </CUnit>
+  <CWeaponLegacy id="Claws">
+    <Range value="0.1" />
+    <Period value="1.0" />
+  </CWeaponLegacy>
+  <CEffectDamage id="Claws">
+    <Amount value="10" />
+    <AttributeBonus index="Armored" value="0" />
+  </CEffectDamage>
+  <CUnit id="Zealot">
+    <LifeMax value="100" />
+    <LifeStart value="100" />
+    <LifeArmor value="0" />
+    <LifeRegenRate value="0" />
+    <ShieldsMax value="0" />
+    <ShieldsStart value="0" />
+    <ShieldRegenRate value="0" />
+    <Speed value="1.75" />
+    <SpeedMultiplierCreep value="1" />
+    <Attributes index="Light" value="1" />
+    <Attributes index="Armored" value="0" />
+  </CUnit>
+  <CWeaponLegacy id="PsiBlades">
+    <Range value="0.1" />
+    <Period value="1.2" />
+  </CWeaponLegacy>
+  <CEffectDamage id="PsiBlades">
+    <Amount value="4" />
+    <AttributeBonus index="Armored" value="11" />
+  </CEffectDamage>
+  <CUnit id="Marine">
+    <LifeMax value="60" />
+    <LifeStart value="60" />
+    <LifeArmor value="0" />
+    <LifeRegenRate value="0" />
+    <ShieldsMax value="0" />
+    <ShieldsStart value="0" />
+    <ShieldRegenRate value="0" />
+    <Speed value="2.75" />
+    <SpeedMultiplierCreep value="1" />
+    <Attributes index="Light" value="1" />
+    <Attributes index="Armored" value="0" />
+  </CUnit>
+  <CWeaponLegacy id="GuassRifle">
+    <Range value="5.0" />
+    <Period value="0.85" />
+  </CWeaponLegacy>
+  <CEffectDamage id="GuassRifle">
+    <Amount value="6" />
+    <AttributeBonus index="Armored" value="0" />
+  </CEffectDamage>
+</Catalog>

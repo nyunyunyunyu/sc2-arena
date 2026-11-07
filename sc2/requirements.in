@@ -1,0 +1,6 @@
+# Python 3.10; old protobuf descriptors and sk-video need these compatibility pins.
+pysc2==4.0.0
+protobuf==3.20.3
+numpy==1.23.5
+pygame==2.6.1
+s2clientprotocol==4.10.1.75800.0

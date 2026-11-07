@@ -1,0 +1,7 @@
+DocInfo/DescLong=Identical custom cavalry, spearman and archer on both sides. Spear counters cavalry; cavalry chases archer; archer kites spear. Four shrinking rings; most survivors at 300 game seconds wins. Equal survivors is a tie.
+DocInfo/DescShort=Cavalry, spear, archer; five rings
+DocInfo/Name=Three Soldiers Counter Ring
+MapInfo/Player00/Name=Neutral
+MapInfo/Player01/Name=Player 1
+MapInfo/Player02/Name=Player 2
+MapInfo/Player03/Name=Hostile
