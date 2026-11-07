@@ -186,8 +186,8 @@ bool ArenaInit (bool testConds, bool runActions) {
     UpdateHud();
     CameraPan(1, Point(arenaCenterX, arenaCenterY), 0.0, -1.0, 10.0, false);
     CameraPan(2, Point(arenaCenterX, arenaCenterY), 0.0, -1.0, 10.0, false);
-    CameraSetValue(1, c_cameraValueDistance, 60.0, 0.0, -1.0, 10.0);
-    CameraSetValue(2, c_cameraValueDistance, 60.0, 0.0, -1.0, 10.0);
+    CameraSetValue(1, c_cameraValueDistance, 40.0, 0.0, -1.0, 10.0);
+    CameraSetValue(2, c_cameraValueDistance, 40.0, 0.0, -1.0, 10.0);
     tick = TriggerCreate("ArenaTick");
     TriggerAddEventTimePeriodic(tick, 0.0625, c_timeGame);
     return true;

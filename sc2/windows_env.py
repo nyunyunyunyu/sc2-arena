@@ -9,7 +9,9 @@ from .arena_env import ArenaEnv
 
 def window_options(visible):
     return dict(window_size=(1600, 900) if visible else (640, 480),
-                window_loc=(40, 40))
+                window_loc=(40, 40),
+                # Limit native drawing, independently of simulation and AI cadence.
+                extra_args=[f"-frameratecap={120 if visible else 30}", "-frameratecapglue=30"])
 
 
 def set_client_window(pid, title=None):

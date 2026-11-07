@@ -1,4 +1,4 @@
-# Run both participants with the installed Windows engine, using its native UI.
+# Native Windows play, replay, or one participant in a LAN room.
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $projectRoot '.deps/sc2-win/Scripts/python.exe'
@@ -27,6 +27,7 @@ for ($i = 0; $i -lt $forward.Count; $i++) {
 }
 $env:PYTHONUTF8 = '1'
 Push-Location $projectRoot
-try { & $python -m sc2.run @forward; $result = $LASTEXITCODE }
+$module = if ($forward[0] -in @('host', 'join')) { 'sc2.lan' } else { 'sc2.run' }
+try { & $python -m $module @forward; $result = $LASTEXITCODE }
 finally { Pop-Location }
 exit $result

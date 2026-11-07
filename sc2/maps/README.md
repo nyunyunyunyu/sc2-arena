@@ -1,6 +1,6 @@
 # Three Soldiers Ring map
 
-The current `ThreeSoldiersCounterRing.SC2Map` is built from Blizzard's old `Flat32.SC2Map` by replacing
+The current `ThreeSoldiersCounterRingClose.SC2Map` is built from Blizzard's old `Flat32.SC2Map` by replacing
 the placed objects, Galaxy scenario script, trigger-editor metadata, title and
 neutral marker data.
 The original 32×32 terrain, pathing, player slots and native `VoidMulti.SC2Mod`
@@ -32,7 +32,9 @@ circle coordinates (96/76/56/36/16 points). They are invulnerable, unselectable 
 untargetable, grant no vision and are excluded from the six combat-unit references
 used for damage and results. The active circle has larger markers. Markers remain
 visible in unexplored areas without revealing enemy units. The camera is centered
-and zoomed out once at initialization; it is never periodically locked.
+and set to distance 40 once at initialization, without changing pitch or yaw; it is
+never periodically locked. The previous distance-60 `ThreeSoldiersCounterRing.SC2Map`
+is retained byte-for-byte for replay bindings.
 
 A map dialog displays the next shrink and time remaining in the native client.
 A second native dialog displays all three custom stat lines and the shared rules.

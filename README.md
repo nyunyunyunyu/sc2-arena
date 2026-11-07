@@ -10,6 +10,8 @@
 
 首次配置环境：`./sc2/setup/windows.ps1`。游戏本体使用本机安装的 StarCraft II；不包含在本仓库中。
 
+两台电脑联机及双方独立选择真人/AI，见 [联机说明](sc2/LAN.md)。
+
 详细玩法、兵种属性、测试与 Linux 入口见 [sc2/README.md](sc2/README.md)，地图构建见 [sc2/maps/README.md](sc2/maps/README.md)。
 
 Python 包保留在 `sc2/`，从仓库根目录运行 `python -m sc2.run`。本机依赖、对局记录和历史工作记录分别位于 `.deps/`、`sc2/runs/` 和 `.retro/`，均不纳入 Git。历史证据中的原始绝对路径保留，以免改变已记录的哈希。

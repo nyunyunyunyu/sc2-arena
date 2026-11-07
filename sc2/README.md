@@ -2,7 +2,7 @@
 
 当前默认是双方属性完全相同的 **轻骑＋长枪＋弓手**。借用跳虫、狂热者、陆战队员的造型，使用用户授权的自定义数值，零升级、零护甲、无护盾/回血/额外技能。地图负责缩圈、伤害和终局，Python 规则只控制本方单位。人机优先使用 **Windows 原生 SC2 界面**，Linux SC2 4.10 的 RGB/Pygame 入口也保留。
 
-新图为 `maps/ThreeSoldiersCounterRing.SC2Map`。旧原生近战图 `maps/ThreeSoldiersMeleeRing.SC2Map` 和旧三远程图 `maps/ThreeSoldiersRing.SC2Map` 的原始字节保留，旧录像仍可回放。旧组合分别用 `--rules sc2/rules-melee-native.json` 和 `--rules sc2/rules-terran.json` 启动。旧局不能计作新组合的战绩。
+新图为 `maps/ThreeSoldiersCounterRingClose.SC2Map`。开局镜头距离从 60 调为 40，仅调整距离，俯仰和朝向不变；仍可自由平移镜头。原 `ThreeSoldiersCounterRing.SC2Map` 保留供旧录像使用。旧原生近战图 `maps/ThreeSoldiersMeleeRing.SC2Map` 和旧三远程图 `maps/ThreeSoldiersRing.SC2Map` 的原始字节保留，旧录像仍可回放。旧组合分别用 `--rules sc2/rules-melee-native.json` 和 `--rules sc2/rules-terran.json` 启动。旧局不能计作新组合的战绩。
 
 数值的时间单位与缩圈 HUD 相同，都是场景秒（16 loops）；Faster 下每墙秒约推进 1.4 场景秒。单一配置源为 `rules.json` 的 `combat`，构建器同时生成数据 XML 和原生界面的属性说明。
 
@@ -16,9 +16,13 @@
 
 克制验证用 `python -m sc2.maps.matchup_probe --output <新目录>`：快近战对站定/走打弓手、长枪对轻骑、长枪对站定弓手、弓手风筝长枪，各交换双方一次。每局诊断移除四个无关单位后，使用真实引擎伤害和移动，必须在首次缩圈之前取得预期结果。诊断不计入真人或训练 AI 胜率。
 
-当前图验证汇总见 `runs/counter-validation.json`：39 项离线测试通过，`counter-matchups-002` 十个换边案例全部通过。轻骑胜弓手后剩 52 HP、胜走打弓手后剩 58/64 HP；长枪胜轻骑后剩 60 HP、胜直接对 A 的弓手后剩 22 HP；走打弓手胜长枪后剩 44/60 HP。另有 `counter-clock-002`、`counter-hazard-001`、`counter-mirror-002` 通过时钟/圈伤、同时全灭平局和完整镜像对战。13 局全为同一最终地图哈希、零动作错误、已保存录像。最终地图 SHA256：`2c1d875608214e234fcb3a32cd7144832e2472a38ba73c92bd5f3ca789eef4cc`。新阵容尚未真人实测，原生属性面板可读性尚未目视确认。
+镜头调整前的战斗配置验证汇总见 `runs/counter-validation.json`：39 项离线测试通过，`counter-matchups-002` 十个换边案例全部通过。轻骑胜弓手后剩 52 HP、胜走打弓手后剩 58/64 HP；长枪胜轻骑后剩 60 HP、胜直接对 A 的弓手后剩 22 HP；走打弓手胜长枪后剩 44/60 HP。另有 `counter-clock-002`、`counter-hazard-001`、`counter-mirror-002` 通过时钟/圈伤、同时全灭平局和完整镜像对战。13 局全为同一最终地图哈希、零动作错误、已保存录像。这些记录对应距离 60 的旧图，SHA256：`2c1d875608214e234fcb3a32cd7144832e2472a38ba73c92bd5f3ca789eef4cc`。距离 40 的新版仅改变开局镜头，兵种与战斗规则保持一致。新阵容尚未真人实测，原生属性面板可读性尚未目视确认。
 
 旧原生近战版本的 37 项离线检查、`melee-mirror-001`、`melee-clock-001`、`melee-simultaneous_hazard-001` 及 `sc2/runs/melee-validation.json` 仅证明旧图；其 SHA256 是 `77c482399367e36d898f8b4c13b9b83f6b5d6f46b4c1b478dffafc95bede01c1`。
+
+## 两台电脑联机
+
+`start-windows.ps1 host --control human` 建房，另一台运行 `start-windows.ps1 join --address <房主IPv4> --control human`。任一方可将 `human` 改为 `ai`，各自只启动一个原生客户端。连接步骤、口令、网络端口与记录见 [LAN.md](LAN.md)。
 
 ## Windows 原生界面
 

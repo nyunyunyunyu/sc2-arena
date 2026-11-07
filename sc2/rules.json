@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "map_name": "ThreeSoldiersCounterRing",
-  "map_file": "maps/ThreeSoldiersCounterRing.SC2Map",
+  "map_name": "ThreeSoldiersCounterRingClose",
+  "map_file": "maps/ThreeSoldiersCounterRingClose.SC2Map",
   "players": 2,
   "race": "Terran",
   "center": [

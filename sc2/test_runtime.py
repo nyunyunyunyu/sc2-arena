@@ -118,6 +118,8 @@ class RuntimeTest(unittest.TestCase):
 
     def test_window_setup_targets_owned_windows_and_checks_hiding(self):
         self.assertEqual(window_options(True)["window_size"], (1600, 900))
+        self.assertEqual(window_options(True)["extra_args"], ["-frameratecap=120", "-frameratecapglue=30"])
+        self.assertEqual(window_options(False)["extra_args"], ["-frameratecap=30", "-frameratecapglue=30"])
         api = Mock()
         visible = {100: True, 200: True}
         api.EnumWindows.side_effect = lambda callback, arg: all(callback(w, arg) for w in visible)
