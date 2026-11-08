@@ -1,7 +1,7 @@
 # 玩法与记录约定
 
 从仓库根目录双击 `start.cmd`，或运行 `.\start.cmd human --ai a2`。
-未指定 AI 时可选 `default`、`a`、`b`、`a2`、`a3`；直接 Enter 使用 `default`。
+未指定 AI 时可选 `default`、`a`、`b`、`a2`、`a3`、`a4`；直接 Enter 使用 `default`。
 完整启动选项见 [首页](../README.md)，联机步骤见 [联机说明](lan.md)。
 
 ## 当前规则

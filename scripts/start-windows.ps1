@@ -19,16 +19,17 @@ for ($i = 0; $i + 1 -lt $forward.Count; $i++) {
 }
 if (($forward[0] -eq 'human' -or ($forward[0] -in @('host', 'join') -and $localAi)) `
     -and -not $hasAi -and '--help' -notin $forward -and '-h' -notin $forward -and '--yes' -notin $forward) {
-    Write-Host 'Choose AI: 1 = Original (default), 2 = A (finals champion), 3 = B (finalist), 4 = A2 (human-match revision), 5 = A3 (ranged endgame revision)'
+    Write-Host 'Choose AI: 1 = Original (default), 2 = A (finals champion), 3 = B (finalist), 4 = A2 (human-match revision), 5 = A3 (ranged endgame revision), 6 = A4 (retreat and rescue revision)'
     do {
-        $choice = Read-Host 'AI [1/2/3/4/5, default/a/b/a2/a3; Enter = 1]'
+        $choice = Read-Host 'AI [1/2/3/4/5/6, default/a/b/a2/a3/a4; Enter = 1]'
         $choice = if ($choice) { $choice.Trim().ToLowerInvariant() } else { '' }
         $selectedAi = switch ($choice) {
             '' { 'default' } '1' { 'default' } 'default' { 'default' }
             '2' { 'a' } 'a' { 'a' } '3' { 'b' } 'b' { 'b' }
             '4' { 'a2' } 'a2' { 'a2' }
             '5' { 'a3' } 'a3' { 'a3' }
-            default { Write-Host 'Please enter 1, 2, 3, 4, 5, default, a, b, a2 or a3.'; $null }
+            '6' { 'a4' } 'a4' { 'a4' }
+            default { Write-Host 'Please enter 1, 2, 3, 4, 5, 6, default, a, b, a2, a3 or a4.'; $null }
         }
     } while (-not $selectedAi)
     $forward.Add('--ai'); $forward.Add($selectedAi)

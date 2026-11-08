@@ -8,9 +8,10 @@
 .\start.cmd
 ```
 
-双击后可选对手：`1` / `default` 为原有 AI，`2` / `a` 为决赛冠军 A，`3` / `b` 为决赛 B，`4` / `a2` 为护弓修订版 A2，`5` / `a3` 为最新远程残局修订版 A3；直接按 Enter 保持原有 AI。也可跳过选择菜单：
+双击后可选对手：`1` / `default` 为原有 AI，`2` / `a` 为决赛冠军 A，`3` / `b` 为决赛 B，`4` / `a2` 为护弓修订版 A2，`5` / `a3` 为远程残局修订版 A3，`6` / `a4` 为最新撤退路线与轻骑救援版 A4；直接按 Enter 保持原有 AI。也可跳过选择菜单：
 
 ```powershell
+.\start.cmd human --ai a4
 .\start.cmd human --ai a3
 .\start.cmd human --ai a2
 .\start.cmd human --ai a

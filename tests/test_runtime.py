@@ -522,7 +522,7 @@ class RuntimeTest(unittest.TestCase):
             self.assertEqual(called, [7, 42])
             self.assertIsNone(mirror_manifest["policy_slot"])
             self.assertEqual(mirror_manifest["actual_policy_slots"], [0, 1])
-            for name in ("a", "b", "a2", "a3"):
+            for name in ("a", "b", "a2", "a3", "a4"):
                 called.clear()
                 selected = load_policy(name)
                 output = Path(temporary) / ("selected-" + name)

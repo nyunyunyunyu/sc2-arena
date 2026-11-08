@@ -239,7 +239,7 @@ def arguments(argv=None):
     parser.add_argument("mode", choices=("host", "join"))
     parser.add_argument("--control", choices=("human", "ai"), default="human")
     parser.add_argument("--ai", type=str.lower, choices=AI_CHOICES, default="default",
-                        help="Local AI policy; requires --control ai (a: finals champion, b: finalist, a2: human-match revision, a3: ranged endgame revision)")
+                        help="Local AI policy; requires --control ai (a: finals champion, b: finalist, a2: human-match revision, a3: ranged endgame revision, a4: retreat and rescue revision)")
     parser.add_argument("--address", help="Host bind IPv4 (default 0.0.0.0), or host LAN/VPN IPv4 to join")
     parser.add_argument("--port", type=int, default=14380, help="Room TCP port; game uses the next four ports")
     parser.add_argument("--key", default="", help="Optional room password; empty by default on both sides")
