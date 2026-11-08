@@ -31,6 +31,8 @@ def arguments(argv=None):
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--step-mul", type=int, choices=(4,), default=4,
                         help="Fixed policy decision cadence in game loops")
+    parser.add_argument("--speed", type=float, choices=(0.25, 0.5, 0.75, 1, 1.5, 2), default=1,
+                        help="Human match speed relative to normal play (default: 1)")
     parser.add_argument("--max-game-loops", type=int, default=12000,
                         help="Watchdog only; expiry is unknown, never a win")
     parser.add_argument("--view-slot", type=int, choices=(0, 1), default=0,
@@ -58,6 +60,8 @@ def arguments(argv=None):
         parser.error("--windowed requires --native-ui (Windows human or watch)")
     if args.max_game_loops <= 0:
         parser.error("max-game-loops must be positive")
+    if args.speed != 1 and args.mode != "human":
+        parser.error("--speed is only available in human mode")
     if args.mode == "watch" and not args.replay:
         parser.error("watch requires --replay")
     if args.mode == "human" and args.opponent != "policy":
@@ -156,9 +160,10 @@ def play(args):
     arena = None
     map_instance = load_map(chosen_map)
     human = args.mode == "human"
-    realtime = human and args.native_ui
+    realtime = human and args.native_ui and args.speed == 1
     visual = human and not args.native_ui
-    environment_step = 1 if visual else args.step_mul
+    paced = human and not realtime
+    environment_step = 1 if paced else args.step_mul
     human_slot = args.view_slot if args.mode == "human" else None
     if human_slot is not None:
         actual_policy_slots = [1 - human_slot]
@@ -175,7 +180,8 @@ def play(args):
     record = GameRecord(output, dict(mode=args.mode, requested_version=args.version,
                          seed=args.seed, step_mul=args.step_mul, realtime=realtime,
                          environment_step_mul=environment_step,
-                         pacing_game_loops_per_wall_second=22.4 if visual else None,
+                         requested_speed=args.speed if human else None,
+                         pacing_game_loops_per_wall_second=22.4 * args.speed if paced else None,
                          selected_map=chosen_map, policy_name=args.ai, policy_sha256=sha256(source),
                          rules_sha256=sha256(args.rules.read_bytes()), arena=arena,
                          opponent=args.opponent, human_slot=human_slot,
@@ -187,11 +193,13 @@ def play(args):
                          pysc2_version=importlib.metadata.version("pysc2"),
                          interface_options=[proto_dict(x) for x in interfaces]))
     print(f"AI: {args.ai}", flush=True)
+    if human:
+        print(f"Game speed: {args.speed:g}x", flush=True)
     env = view = None
     observations = []
     status, failure = "unknown", None
     try:
-        if realtime and args.start_paused:
+        if human and args.native_ui and args.start_paused:
             print("准备好后在此按 Enter。随后切到『三兵缩圈 — 玩家窗口』；地图加载完成后自动开局。", flush=True)
             input()
         environment_class = ArenaEnv
@@ -232,8 +240,9 @@ def play(args):
         if visual:
             view = env.start_view(args.view_slot, arena)
             view.awaiting_start = args.start_paused
+        next_frame = time.perf_counter()
         while True:
-            frame_started = time.monotonic()
+            frame_started = time.perf_counter()
             observations = [t.observation for t in timesteps]
             for obs in observations:
                 record.observe(obs)
@@ -270,8 +279,10 @@ def play(args):
                 record.decision(obs, issued, reason)
                 actions.append(issued)
             timesteps = env.step(actions)
-            if visual:
-                time.sleep(max(0, environment_step / 22.4 - (time.monotonic() - frame_started)))
+            if paced:
+                # Absorb sleep overshoot without accumulating catch-up frames after a pause.
+                next_frame = max(next_frame + environment_step / (22.4 * args.speed), frame_started)
+                time.sleep(max(0, next_frame - time.perf_counter()))
     except KeyboardInterrupt:
         status = "interrupted"
     except Exception as exc:
@@ -296,7 +307,7 @@ def play(args):
             try:
                 if view:
                     view.close()
-                if realtime and status == "complete":
+                if human and args.native_ui and status == "complete":
                     time.sleep(rules.get("end_hold_seconds", 5))
                 env.close()
             except Exception as exc:

@@ -200,6 +200,17 @@ class RuntimeTest(unittest.TestCase):
                 arguments(["duel", "--step-mul", str(cadence)])
         self.assertEqual(arguments(["human"]).step_mul, 4)
 
+    def test_human_speed_choices_and_mode_validation(self):
+        self.assertEqual(arguments(["human"]).speed, 1)
+        for speed in (0.25, 0.5, 0.75, 1, 1.5, 2):
+            self.assertEqual(arguments(["human", "--speed", str(speed)]).speed, speed)
+        for speed in ("0", "-1", "nan", "inf", "3"):
+            with self.subTest(speed=speed), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                arguments(["human", "--speed", speed])
+        for command in (["duel"], ["watch", "--replay", "test"]):
+            with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                arguments(command + ["--speed", "0.5"])
+
     def test_arena_binding_uses_map_content_instead_of_filename(self):
         rules = {"map_file": "official/ThreeSoldiersRing.SC2Map", "center": [16, 16]}
         with tempfile.TemporaryDirectory() as temporary:
@@ -513,6 +524,40 @@ class RuntimeTest(unittest.TestCase):
             self.assertIsNone(native_manifest["pacing_game_loops_per_wall_second"])
             self.assertFalse(native_manifest["interface_options"][0]["raw_affects_selection"])
             self.assertNotIn("render", native_manifest["interface_options"][0])
+            for native in (False, True):
+                for speed, elapsed, lateness in ((0.5, 0.01, 0), (2, 0.01, 0.005), (2, 1.0, 0)):
+                    called.clear()
+                    lifecycle.clear()
+                    output = Path(temporary) / f"speed-{native}-{speed}-{elapsed}"
+                    period = 1 / (22.4 * speed)
+                    starts = [10 + i * max(period, elapsed) + (lateness if i else 0) for i in range(7)]
+                    command = ["human", "--speed", str(speed), "--output", str(output)]
+                    if native:
+                        command += ["--native-ui", "--start-paused"]
+                    with self.subTest(native=native, speed=speed, elapsed=elapsed), \
+                            patch("sc2.run.sys.platform", "win32"), \
+                            patch("sc2.windows_env.WindowsArenaEnv", side_effect=FakeEnv) as speed_env, \
+                            patch("sc2.agent.decide", decide), patch("sc2.run.replay_speed", return_value=4), \
+                            patch("sc2.run.time", SimpleNamespace(sleep=Mock(), perf_counter=Mock(
+                                side_effect=[10] + [v for start in starts[:-1] for v in (start, start + elapsed)]
+                                + [starts[-1]]))) as speed_time, \
+                            patch("builtins.input", side_effect=lambda: lifecycle.append("input")):
+                        self.assertEqual(play(arguments(command)), 0)
+                    self.assertEqual(called, [42, 42])  # Decisions stay at loops 0 and 4 at every speed.
+                    self.assertFalse(speed_env.call_args.kwargs["realtime"])
+                    self.assertEqual(speed_env.call_args.kwargs["step_mul"], 1)
+                    self.assertEqual(lifecycle, ["input", "launch"] if native else ["launch"])
+                    delays = [call.args[0] for call in speed_time.sleep.call_args_list]
+                    if native:
+                        self.assertEqual(delays.pop(), 5)  # End-of-game hold remains wall time.
+                    self.assertEqual(len(delays), 6)
+                    for i, delay in enumerate(delays):
+                        self.assertAlmostEqual(delay, max(0, period - elapsed - (lateness if i else 0)))
+                    speed_manifest = json.loads((output / "manifest.json").read_text())
+                    self.assertEqual(speed_manifest["requested_speed"], speed)
+                    self.assertEqual(speed_manifest["pacing_game_loops_per_wall_second"], 22.4 * speed)
+                    self.assertEqual(speed_manifest["step_mul"], 4)
+                    self.assertEqual(speed_manifest["game_speed"], 4)  # Replay engine enum is not wall pacing.
             called.clear()
             args = arguments(["duel", "--no-window", "--output", str(Path(temporary) / "mirror")])
             with patch("sc2.arena_env.ArenaEnv", FakeEnv), patch("sc2.windows_env.WindowsArenaEnv", FakeEnv), patch("sc2.agent.decide", decide), \

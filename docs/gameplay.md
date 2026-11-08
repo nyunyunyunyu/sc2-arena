@@ -30,7 +30,10 @@ Esc 是原生菜单键。使用 SC2 自带的鼠标、编队、快捷键和镜�
 AI 客户端在加载时可能短暂出现；不要手动关闭它。
 
 真人镜头距离 30，联机 AI 镜头距离 100；镜头不锁定，AI 的视野权限不变。
-原生人机实时推进，AI 每 4 loops 决策，迟到采样按实际 loop 记录。
+原生人机默认实时推进，AI 每 4 loops 决策，迟到采样按实际 loop 记录。
+单机人机加 `--speed 0.5` 可半速练习，也可选 `0.25`、`0.75`、`1`、`1.5`、`2`。
+非 1 倍时按帧控制整局节奏，双方动作、攻击、准备倒计时和缩圈一起变速；
+AI 的游戏帧决策间隔不变。速度在启动时设置，加速上限受机器性能限制。
 每局结束保留画面至少 5 秒；联机 host 可用 `--rounds` 连续开局。
 血条常显可在 SC2「选项 → 游戏性 → 显示单位状态条」中设置为「总是」。
 
@@ -40,6 +43,8 @@ AI 客户端在加载时可能短暂出现；不要手动关闭它。
 `observations.jsonl.gz` 和 `game.SC2Replay`。多局联机另有 `series.json` 和各局子目录。
 manifest 记录引擎、地图、策略、规则哈希及真实玩家编号；观测日志保留 raw/fog/score/actions，
 裁掉 RGB/feature 像素并声明省略字段。
+人机另记录 `requested_speed` 与 `pacing_game_loops_per_wall_second`；`game_speed` 仍为
+录像里的引擎速度枚举。回放保留游戏帧顺序，不自动复现人机启动时设置的墙钟倍速。
 
 ```powershell
 .\start.cmd watch --replay 'sc2/runs/<本局目录>/game.SC2Replay'
