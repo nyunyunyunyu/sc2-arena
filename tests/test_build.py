@@ -1,6 +1,7 @@
 """Roster validation without running a compiler or game."""
 import copy
 import json
+import re
 import unittest
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -28,6 +29,18 @@ class BuildTest(unittest.TestCase):
         for value in (-1, 1.5, True):
             with self.assertRaises(AssertionError):
                 rule_source(dict(rules, ready_game_loops=value))
+
+    def test_map_localized_labels_resolve_to_unique_nonempty_text(self):
+        root = Path(__file__).parents[1] / "sc2"
+        rules = json.loads((root / "rules.json").read_text(encoding="utf-8"))
+        strings = (root / "maps/src/enUS.SC2Data/LocalizedData/GameStrings.txt").read_text(encoding="utf-8")
+        entries = [line.split("=", 1) for line in (strings + combat_strings(rules)).splitlines() if "=" in line]
+        localized = dict(entries)
+        self.assertEqual(len(entries), len(localized), "Duplicate localization keys")
+        script = (root / "maps/src/MapScript.galaxy").read_text(encoding="utf-8")
+        for key in re.findall(r'StringExternal\("([^"\n]+)"\)', script):
+            with self.subTest(key=key):
+                self.assertTrue(localized.get(key, "").strip(), "Missing visible label text")
 
     def test_counter_triangle_and_public_data(self):
         rules = json.loads(((Path(__file__).parents[1] / "sc2") / "rules.json").read_text())

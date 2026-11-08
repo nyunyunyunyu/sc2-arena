@@ -160,6 +160,65 @@ class LanTests(unittest.TestCase):
             lan.local_actions("ai", obs, {}, {}, result[3])
             self.assertEqual(decide.call_count, 2)
 
+    def test_ai_yields_selected_units_and_resumes_on_deselection(self):
+        obs = observation()
+        obs.observation.raw_data.units.add(tag=456, alliance=1, display_type=1)
+        obs.observation.raw_data.units.add(tag=789, alliance=4, display_type=1, is_selected=True)
+        single = sc_pb.Action()
+        single.action_raw.unit_command.ability_id = 4
+        single.action_raw.unit_command.unit_tags.append(123)
+        group = sc_pb.Action()
+        group.action_raw.unit_command.ability_id = 23
+        group.action_raw.unit_command.unit_tags.extend([123, 456])
+        group.action_raw.unit_command.target_unit_tag = 789
+        group.action_raw.unit_command.queue_command = True
+        move = sc_pb.Action()
+        move.action_raw.unit_command.ability_id = 16
+        move.action_raw.unit_command.unit_tags.append(456)
+        move.action_raw.unit_command.target_world_space_pos.x = 20
+        move.action_raw.unit_command.target_world_space_pos.y = 21
+        actions = [single, group, move]
+        original = [a.SerializeToString() for a in actions]
+        memory, reason = {"game_loop": 0}, {"mode": "ai"}
+        policy = SimpleNamespace(CADENCE=4, decide=Mock(return_value=(actions, memory, reason)))
+        group_123, group_456 = copy.deepcopy(group), copy.deepcopy(group)
+        group_123.action_raw.unit_command.unit_tags[:] = [123]
+        group_456.action_raw.unit_command.unit_tags[:] = [456]
+        next_loop = 0
+        for selected, expected in (((), actions), ((123,), [group_456, move]),
+                                   ((123, 456), []), ((456,), [single, group_123]), ((), actions)):
+            with self.subTest(selected=selected):
+                obs.observation.game_loop = next_loop
+                for unit in obs.observation.raw_data.units[:2]:
+                    unit.is_selected = unit.tag in selected
+                before = obs.SerializeToString()
+                issued, new_memory, why, next_loop = lan.local_actions(
+                    "ai", obs, memory, {}, next_loop, policy)
+                self.assertEqual(issued, expected)
+                lan.validate_actions(obs, issued)
+                self.assertEqual(why.get("manual_unit_tags", []), list(selected))
+                self.assertIs(new_memory, memory)
+                self.assertEqual(obs.SerializeToString(), before)
+                self.assertEqual([a.SerializeToString() for a in actions], original)
+                self.assertEqual(reason, {"mode": "ai"})
+        self.assertEqual(policy.decide.call_count, 5)
+        self.assertFalse(lan.join_request("127.0.0.1", 14380, "ai", "host").options.raw_affects_selection)
+
+    def test_selection_does_not_bypass_action_validation(self):
+        obs = observation()
+        obs.observation.raw_data.units[0].is_selected = True
+        action = sc_pb.Action()
+        action.action_raw.unit_command.ability_id = 23
+        action.action_raw.unit_command.unit_tags.append(123)
+        action.action_raw.unit_command.target_unit_tag = 999
+        policy = SimpleNamespace(CADENCE=4, decide=Mock(return_value=([action], {}, {})))
+        with self.assertRaisesRegex(ValueError, "non-visible"):
+            lan.local_actions("ai", obs, {}, {}, 0, policy)
+        action.action_raw.unit_command.ClearField("target_unit_tag")
+        action.action_raw.unit_command.unit_tags.append(999)
+        with self.assertRaisesRegex(ValueError, "non-owned"):
+            lan.local_actions("ai", obs, {}, {}, 0, policy)
+
     def fake_play(self, control, peer_control, directory, disconnect=False, watchdog=False, role="host", bad_replay=False, display=None, rounds=1, ai="default"):
         args = lan.arguments([role, "--address", "127.0.0.1", "--control", control, "--yes",
                               *(display if display is not None else ["--hidden"]), "--output", str(directory), "--ai", ai])

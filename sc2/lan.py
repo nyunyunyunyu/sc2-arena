@@ -16,7 +16,7 @@ import time
 from absl import flags
 from pysc2 import run_configs
 from pysc2.lib import protocol
-from s2clientprotocol import common_pb2, sc2api_pb2 as sc_pb
+from s2clientprotocol import common_pb2, raw_pb2, sc2api_pb2 as sc_pb
 
 from . import agent
 from .policies import AI_CHOICES, load_policy
@@ -231,6 +231,19 @@ def local_actions(control, obs, memory, arena, next_loop, policy=agent):
         return [], memory, {"mode": "policy_cadence_wait"}, next_loop
     actions, memory, reason = policy.decide(obs, memory, arena=arena)
     validate_actions(obs, actions)
+    selected = {u.tag for u in obs.observation.raw_data.units
+                if u.alliance == raw_pb2.Self and u.is_selected}
+    if selected:
+        issued = []
+        for action in actions:
+            tags = [tag for tag in action.action_raw.unit_command.unit_tags if tag not in selected]
+            if tags:
+                filtered = sc_pb.Action()
+                filtered.CopyFrom(action)
+                filtered.action_raw.unit_command.unit_tags[:] = tags
+                issued.append(filtered)
+        actions = issued
+        reason = dict(reason, manual_unit_tags=sorted(selected))
     return actions, memory, reason, loop + policy.CADENCE
 
 
@@ -312,7 +325,7 @@ def play_round(args, room, process, record, rules, map_name, host_ip, number, po
         player_id = response.player_id
         if sys.platform == "win32":
             set_client_window(process.pid, None if not visible else
-                              f"三兵缩圈 — {'真人操作' if args.control == 'human' else 'AI 对战观战'} — 玩家 {player_id}")
+                              f"三兵缩圈 — {'真人操作' if args.control == 'human' else 'AI 控制（选中单位手动接管）'} — 玩家 {player_id}")
         observation = controller.observe()
         record.observe(observation)
         data = controller.data()

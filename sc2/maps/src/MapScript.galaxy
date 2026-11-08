@@ -9,6 +9,8 @@ int arenaReadyTicks = 0;
 int arenaTicks = 0;
 int arenaPhase = 0;
 int arenaHud;
+int arenaReadyDialog;
+int arenaReadyLabel;
 bool arenaFinished = false;
 
 void UpdateRings () {
@@ -42,9 +44,12 @@ void UpdateHud () {
     DialogControlSetPropertyAsText(arenaHud, c_triggerControlPropertyText, PlayerGroupAll(),
         StringToText("THREE SOLDIERS  |  " + next + "  |  End: " +
         IntToString(arenaDuration - seconds) + "s  |  Ring " + IntToString(arenaPhase + 1) + "/5"));
+    DialogSetVisible(arenaReadyDialog, PlayerGroupAll(), arenaReadyTicks < arenaReadyLoops);
     if (arenaReadyTicks < arenaReadyLoops) {
-        DialogControlSetPropertyAsText(arenaHud, c_triggerControlPropertyText, PlayerGroupAll(),
-            StringToText("GET READY  |  " + IntToString(FixedToInt(Ceiling((arenaReadyLoops - arenaReadyTicks) / 22.4))) + "s"));
+        DialogControlSetPropertyAsText(arenaReadyLabel, c_triggerControlPropertyText, PlayerGroupAll(),
+            StringExternal("Arena/ReadyPrefix") +
+            StringToText(IntToString(FixedToInt(Ceiling((arenaReadyLoops - arenaReadyTicks) / 22.4)))) +
+            StringExternal("Arena/ReadySuffix"));
     }
     // The curriculum score is a public clock, never the match result.
     PlayerModifyPropertyFixed(1, c_playerPropCurriculumScore, c_playerPropOperSetTo, arenaTicks / 16.0);
@@ -198,6 +203,18 @@ bool ArenaInit (bool testConds, bool runActions) {
     DialogControlSetSize(arenaHud, PlayerGroupAll(), 630, 42);
     DialogControlSetPosition(arenaHud, PlayerGroupAll(), c_anchorCenter, 0, 0);
     DialogControlSetVisible(arenaHud, PlayerGroupAll(), true);
+    arenaReadyDialog = DialogCreate(820, 300, c_anchorCenter, 0, 0, false);
+    arenaReadyLabel = DialogControlCreate(arenaReadyDialog, c_triggerControlTypeLabel);
+    DialogControlSetSize(arenaReadyLabel, PlayerGroupAll(), 780, 60);
+    DialogControlSetPosition(arenaReadyLabel, PlayerGroupAll(), c_anchorTop, 0, 24);
+    DialogControlSetPropertyAsString(arenaReadyLabel, c_triggerControlPropertyStyle, PlayerGroupAll(), "WarningDisplay");
+    DialogControlSetVisible(arenaReadyLabel, PlayerGroupAll(), true);
+    rulesLabel = DialogControlCreate(arenaReadyDialog, c_triggerControlTypeLabel);
+    DialogControlSetSize(rulesLabel, PlayerGroupAll(), 780, 180);
+    DialogControlSetPosition(rulesLabel, PlayerGroupAll(), c_anchorTop, 0, 94);
+    DialogControlSetPropertyAsString(rulesLabel, c_triggerControlPropertyStyle, PlayerGroupAll(), "WaitingForPlayersDialogTitle");
+    DialogControlSetPropertyAsText(rulesLabel, c_triggerControlPropertyText, PlayerGroupAll(), StringExternal("Arena/ControlRules"));
+    DialogControlSetVisible(rulesLabel, PlayerGroupAll(), true);
     if (arenaCustomCombat) {
         dialog = DialogCreate(620, 115, c_anchorTopLeft, 12, 75, false);
         DialogSetVisible(dialog, PlayerGroupAll(), true);

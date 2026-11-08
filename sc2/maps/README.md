@@ -41,8 +41,10 @@ or locks the camera. The previous Near map is preserved for existing replays. Th
 and distance-60 `ThreeSoldiersCounterRing.SC2Map` are retained byte-for-byte for replay bindings.
 
 All six soldiers are paused for the first 112 game loops (about 5 wall seconds
-at Faster). A map countdown is displayed; the public match clock stays zero until
-preparation ends. AI sends no unit orders during preparation.
+at Faster). A centered native dialog shows the countdown and Chinese AI takeover
+instructions: select owned units for manual control, Shift-click selected units to
+return them to AI, with multiple selection supported. It disappears when preparation
+ends. The public match clock stays zero and AI sends no unit orders during preparation.
 
 A map dialog displays the next shrink and time remaining in the native client.
 A second native dialog displays all three custom stat lines and the shared rules.

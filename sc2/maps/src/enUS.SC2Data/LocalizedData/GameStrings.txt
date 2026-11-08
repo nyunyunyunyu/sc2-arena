@@ -5,3 +5,6 @@ MapInfo/Player00/Name=Neutral
 MapInfo/Player01/Name=Player 1
 MapInfo/Player02/Name=Player 2
 MapInfo/Player03/Name=Hostile
+Arena/ReadyPrefix=开战倒计时：
+Arena/ReadySuffix= 秒
+Arena/ControlRules=<c val="ffd166">AI 模式 · 手动接管</c><n/>左键选中本方单位：你控制；未选中的由 AI 控制<n/>Shift + 左键点击已选单位：取消选中，交回 AI<n/>支持多选；已有指令可用手动命令覆盖
