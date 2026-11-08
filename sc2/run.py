@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .record import GameRecord, actual_results, proto_dict, replay_speed, sha256
+from .policies import AI_CHOICES, load_policy
 
 
 def save_rgb_frame(obs, path):
@@ -15,7 +16,9 @@ def save_rgb_frame(obs, path):
     frame = obs.observation.render_data.map
     if not frame.data or frame.bits_per_pixel != 24:
         raise ValueError("SC2 did not return the requested 24-bit RGB frame")
-    surface = pygame.image.frombuffer(frame.data, (frame.size.x, frame.size.y), "RGB")
+    # Windows 5.0.17 returns BGR bytes; checked against the native client capture.
+    surface = pygame.image.frombuffer(frame.data, (frame.size.x, frame.size.y),
+                                     "BGR" if sys.platform == "win32" else "RGB")
     pygame.image.save(surface, str(path))
 
 
@@ -37,12 +40,22 @@ def arguments(argv=None):
     parser.add_argument("--rgb", action="store_true", help="Request RGB as well as feature view")
     parser.add_argument("--native-ui", action="store_true",
                         help="Use the Windows SC2 client for human input or replay viewing")
+    display = parser.add_mutually_exclusive_group()
+    display.add_argument("--windowed", action="store_true", help="Use a window instead of native full screen")
+    display.add_argument("--no-window", action="store_true",
+                         help="AI duel only; Windows hides clients, Linux runs headless; duel already defaults to this")
     parser.add_argument("--start-paused", action="store_true",
                         help="Wait for Enter before native client launch, or Pause/Esc in PyGame")
+    parser.add_argument("--ai", type=str.lower, choices=AI_CHOICES, default="default",
+                        help="AI opponent in human mode; both policy slots in duel (a: finals champion, b: finalist, a2: human-match revision, a3: ranged endgame revision)")
     parser.add_argument("--opponent", choices=("policy", "hold"), default="policy")
     parser.add_argument("--output", type=Path, help="New evidence directory; never overwritten")
     parser.add_argument("--replay", type=Path, help="Replay for watch mode")
     args = parser.parse_args(argv)
+    if args.no_window and (args.mode != "duel" or args.rgb):
+        parser.error("--no-window requires duel without --rgb")
+    if args.windowed and not args.native_ui:
+        parser.error("--windowed requires --native-ui (Windows human or watch)")
     if args.max_game_loops <= 0:
         parser.error("max-game-loops must be positive")
     if args.mode == "watch" and not args.replay:
@@ -102,7 +115,7 @@ def watch(args):
     launch_options = {}
     if args.native_ui:
         from .windows_env import window_options
-        launch_options = window_options(True)
+        launch_options = window_options(True, windowed=args.windowed)
     with config.start(want_rgb=args.rgb, **launch_options) as controller:
         info = controller.replay_info(replay_data)
         identity = controller.ping()
@@ -134,7 +147,7 @@ def watch(args):
 def play(args):
     from pysc2.env import sc2_env
     from pysc2.lib import renderer_human
-    from . import agent
+    policy = load_policy(args.ai)
     from .arena_env import ArenaEnv, interface_options, load_map, validate_actions
     rules = json.loads(args.rules.read_text(encoding="utf-8-sig"))
     chosen_map = args.map or str(args.rules.parent / rules["map_file"])
@@ -156,12 +169,12 @@ def play(args):
     if args.native_ui:
         interfaces[human_slot].raw_affects_selection = False
     output = args.output or Path("sc2/runs") / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
-    source = Path(agent.__file__).read_bytes()
+    source = Path(policy.__file__).read_bytes()
     record = GameRecord(output, dict(mode=args.mode, requested_version=args.version,
                          seed=args.seed, step_mul=args.step_mul, realtime=realtime,
                          environment_step_mul=environment_step,
                          pacing_game_loops_per_wall_second=22.4 if visual else None,
-                         selected_map=chosen_map, policy_sha256=sha256(source),
+                         selected_map=chosen_map, policy_name=args.ai, policy_sha256=sha256(source),
                          rules_sha256=sha256(args.rules.read_bytes()), arena=arena,
                          opponent=args.opponent, human_slot=human_slot,
                          policy_slot=actual_policy_slots[0] if len(actual_policy_slots) == 1 else None,
@@ -171,6 +184,7 @@ def play(args):
                          rgb_backend="osmesa" if args.rgb and sys.platform == "linux" else None,
                          pysc2_version=importlib.metadata.version("pysc2"),
                          interface_options=[proto_dict(x) for x in interfaces]))
+    print(f"AI: {args.ai}", flush=True)
     env = view = None
     observations = []
     status, failure = "unknown", None
@@ -184,9 +198,10 @@ def play(args):
             from .windows_env import WindowsArenaEnv
             environment_class = WindowsArenaEnv
             environment_options["human_slot"] = human_slot if args.native_ui else None
+            environment_options["windowed"] = args.windowed
         env = environment_class(map_name=map_instance,
              players=[sc2_env.Agent(sc2_env.Race.terran, "human" if i == human_slot else
-                          "hold" if args.opponent == "hold" and i != args.policy_slot else "rule-%d" % i)
+                          "hold" if args.opponent == "hold" and i != args.policy_slot else "ai-%s-%d" % (args.ai, i))
                       for i in range(2)],
              agent_interface_format=interfaces, disable_fog=False, visualize=False,
              realtime=realtime, step_mul=environment_step, random_seed=args.seed,
@@ -247,7 +262,7 @@ def play(args):
                 elif human and obs.observation.game_loop < next_policy_loop[slot]:
                     issued, reason = [], {"mode": "policy_cadence_wait"}
                 else:
-                    issued, memories[slot], reason = agent.decide(obs, memories[slot], arena=arena)
+                    issued, memories[slot], reason = policy.decide(obs, memories[slot], arena=arena)
                     next_policy_loop[slot] = obs.observation.game_loop + args.step_mul
                 validate_actions(obs, issued)
                 record.decision(obs, issued, reason)
@@ -279,6 +294,8 @@ def play(args):
             try:
                 if view:
                     view.close()
+                if realtime and status == "complete":
+                    time.sleep(rules.get("end_hold_seconds", 5))
                 env.close()
             except Exception as exc:
                 record.manifest["close_error"] = repr(exc)

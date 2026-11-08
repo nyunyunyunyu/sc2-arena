@@ -15,7 +15,8 @@ from s2clientprotocol import raw_pb2 as raw_pb
 from s2clientprotocol import sc2api_pb2 as sc_pb
 from .arena_env import ArenaRenderer, arena_hud, interface_options, load_map, projected_ring, validate_actions
 from .record import GameRecord, actual_results, sha256
-from .run import arena_for_map, arena_for_replay, arguments, play, replay_map_data, watch
+from .policies import load_policy
+from .run import arena_for_map, arena_for_replay, arguments, play, replay_map_data, save_rgb_frame, watch
 from .windows_env import set_client_window, window_options
 
 
@@ -30,6 +31,20 @@ def observation():
 
 
 class RuntimeTest(unittest.TestCase):
+    def test_rgb_capture_decodes_native_windows_bgr(self):
+        import pygame
+        obs = sc_pb.ResponseObservation()
+        frame = obs.observation.render_data.map
+        frame.size.x = frame.size.y = 1
+        frame.bits_per_pixel = 24
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "red.png"
+            for platform, data in (("win32", bytes((0, 0, 255))), ("linux", bytes((255, 0, 0)))):
+                frame.data = data
+                with patch("sc2.run.sys.platform", platform):
+                    save_rgb_frame(obs, path)
+                self.assertEqual(tuple(pygame.image.load(str(path)).get_at((0, 0)))[:3], (255, 0, 0))
+
     def test_interface_keeps_fog_information_options_strict(self):
         options = interface_options(visual=True, rgb=True)
         self.assertTrue(options.raw)
@@ -116,9 +131,46 @@ class RuntimeTest(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     arguments(command)
 
+    def test_display_flags_reject_hiding_humans_and_rgb(self):
+        with patch("sc2.run.sys.platform", "win32"), redirect_stderr(io.StringIO()):
+            self.assertFalse(arguments(["human", "--native-ui"]).windowed)
+            self.assertTrue(arguments(["human", "--native-ui", "--windowed"]).windowed)
+            self.assertTrue(arguments(["duel", "--no-window"]).no_window)
+            for command in (["human", "--no-window"], ["watch", "--replay", "test", "--no-window"],
+                            ["duel", "--no-window", "--rgb"], ["duel", "--windowed"],
+                            ["duel", "--no-window", "--windowed"]):
+                with self.subTest(command=command), self.assertRaises(SystemExit):
+                    arguments(command)
+        with patch("sc2.run.sys.platform", "linux"):
+            self.assertTrue(arguments(["duel", "--no-window"]).no_window)
+
+    def test_native_launch_fullscreen_only_for_the_visible_player(self):
+        from sc2.windows_env import WindowsArenaEnv
+        for human_slot, windowed in ((0, False), (1, True), (None, False)):
+            with self.subTest(human_slot=human_slot, windowed=windowed):
+                env = WindowsArenaEnv.__new__(WindowsArenaEnv)
+                env.native_human_slot, env.native_windowed = human_slot, windowed
+                env._num_agents = 2
+                env._interface_options = [interface_options(), interface_options()]
+                env._run_config = Mock()
+                env._run_config.start.side_effect = [Mock(pid=101), Mock(pid=102)]
+                with patch("sc2.windows_env.portspicker.pick_unused_ports", return_value=[1, 2, 3, 4]), \
+                        patch("sc2.windows_env.set_client_window") as hide:
+                    env._launch_game()
+                for slot, call in enumerate(env._run_config.start.call_args_list):
+                    self.assertEqual(call.kwargs["full_screen"], slot == human_slot and not windowed)
+                    self.assertEqual(call.kwargs["window_size"], (1600, 900) if slot == human_slot else (640, 480))
+                    self.assertFalse(call.kwargs["want_rgb"])
+                self.assertEqual([call.args[0] for call in hide.call_args_list],
+                                 [101 + slot for slot in range(2) if slot != human_slot])
+
     def test_window_setup_targets_owned_windows_and_checks_hiding(self):
+        self.assertTrue(window_options(True)["full_screen"])
+        self.assertFalse(window_options(True, windowed=True)["full_screen"])
+        self.assertNotIn("-displayMode", window_options(True, windowed=True)["extra_args"])
+        self.assertFalse(window_options(False)["full_screen"])
         self.assertEqual(window_options(True)["window_size"], (1600, 900))
-        self.assertEqual(window_options(True)["extra_args"], ["-frameratecap=120", "-frameratecapglue=30"])
+        self.assertEqual(window_options(True)["extra_args"], ["-frameratecap=120", "-frameratecapglue=30", "-displayMode", "2"])
         self.assertEqual(window_options(False)["extra_args"], ["-frameratecap=30", "-frameratecapglue=30"])
         api = Mock()
         visible = {100: True, 200: True}
@@ -222,11 +274,12 @@ class RuntimeTest(unittest.TestCase):
                 ended.player_result.add(player_id=42, result=sc_pb.Victory)
                 controller.observe = Mock(side_effect=[observation(), ended])
                 controller.step = Mock()
-                args.native_ui, args.rgb = True, False
-                with patch("sc2.windows_env.window_options", return_value={}), \
+                args.native_ui, args.rgb, args.windowed = True, False, True
+                with patch("sc2.windows_env.window_options", return_value={}) as options, \
                         patch("sc2.arena_env.ArenaRenderer", side_effect=AssertionError("No PyGame UI")), \
                         patch("sc2.run.time.sleep"):
                     self.assertEqual(watch(args), 0)
+                options.assert_called_once_with(True, windowed=True)
                 controller.step.assert_called_once_with(1)
                 self.assertFalse(requests[1].options.HasField("render"))
                 self.assertFalse(requests[1].options.HasField("feature_layer"))
@@ -251,6 +304,7 @@ class RuntimeTest(unittest.TestCase):
                  "radii": [14, 11, 8], "phase_start_seconds": [0, 60, 120]}
         obs = observation()
         self.assertEqual(arena_hud(rules, obs), "Arena clock unavailable")
+        self.assertEqual(arena_hud(dict(rules, ready_game_loops=112), obs), "GET READY | 5s")
         obs.observation.score.score = 60
         self.assertEqual(arena_hud(rules, obs), "Remaining 240s | radius 11 | shrink in 60s")
         obs.observation.score.score = 300
@@ -281,7 +335,7 @@ class RuntimeTest(unittest.TestCase):
                    world_to_surf=transform.Linear(2, point.Point(8, 8)))
         ArenaRenderer.draw_rings(view, surf)
         for index, radius in enumerate(rules["radii"]):
-            expected = (255, 220, 40) if index == 1 else (80, 150, 175)
+            expected = (255, 40, 40) if index <= 1 else (80, 220, 110)
             self.assertEqual(tuple(surf.surf.get_at((40 + radius * 2, 40)))[:3], expected)
 
     def test_duel_routes_policy_to_requested_participant_and_records_real_ids(self):
@@ -401,17 +455,18 @@ class RuntimeTest(unittest.TestCase):
             called.clear()
             lifecycle.clear()
             with patch("sc2.run.sys.platform", "win32"):
-                args = arguments(["human", "--native-ui", "--start-paused",
+                args = arguments(["human", "--native-ui", "--start-paused", "--windowed",
                                   "--output", str(Path(temporary) / "native")])
-                with patch("sc2.windows_env.WindowsArenaEnv", FakeEnv), \
+                with patch("sc2.windows_env.WindowsArenaEnv", side_effect=FakeEnv) as native_env, \
                         patch.object(FakeEnv, "start_view", side_effect=AssertionError("No PyGame UI")), \
                         patch("sc2.agent.decide", decide), patch("sc2.run.replay_speed", return_value=4), \
                         patch("sc2.run.time.sleep") as native_sleep, \
                         patch("builtins.input", side_effect=lambda: lifecycle.append("input")) as gate:
                     self.assertEqual(play(args), 0)
+                self.assertTrue(native_env.call_args.kwargs["windowed"])
                 gate.assert_called_once()
                 self.assertEqual(lifecycle, ["input", "launch"])
-                native_sleep.assert_not_called()
+                native_sleep.assert_called_once_with(5)
             native_manifest = json.loads((Path(temporary) / "native" / "manifest.json").read_text())
             self.assertEqual(called, [42, 42])
             self.assertEqual(native_manifest["human_interface"], "native_windows")
@@ -421,7 +476,7 @@ class RuntimeTest(unittest.TestCase):
             self.assertFalse(native_manifest["interface_options"][0]["raw_affects_selection"])
             self.assertNotIn("render", native_manifest["interface_options"][0])
             called.clear()
-            args = arguments(["duel", "--output", str(Path(temporary) / "mirror")])
+            args = arguments(["duel", "--no-window", "--output", str(Path(temporary) / "mirror")])
             with patch("sc2.arena_env.ArenaEnv", FakeEnv), patch("sc2.windows_env.WindowsArenaEnv", FakeEnv), patch("sc2.agent.decide", decide), \
                     patch("sc2.run.replay_speed", return_value=4):
                 self.assertEqual(play(args), 0)
@@ -429,6 +484,21 @@ class RuntimeTest(unittest.TestCase):
             self.assertEqual(called, [7, 42])
             self.assertIsNone(mirror_manifest["policy_slot"])
             self.assertEqual(mirror_manifest["actual_policy_slots"], [0, 1])
+            for name in ("a", "b", "a2", "a3"):
+                called.clear()
+                selected = load_policy(name)
+                output = Path(temporary) / ("selected-" + name)
+                args = arguments(["human", "--ai", name, "--output", str(output)])
+                with patch("sc2.arena_env.ArenaEnv", FakeEnv), patch("sc2.windows_env.WindowsArenaEnv", FakeEnv), \
+                        patch.object(selected, "decide", decide), \
+                        patch("sc2.agent.decide", side_effect=AssertionError("Wrong AI selected")), \
+                        patch("sc2.run.replay_speed", return_value=4), patch("sc2.run.time.sleep"):
+                    self.assertEqual(play(args), 0)
+                self.assertEqual(called, [42, 42])
+                selected_manifest = json.loads((output / "manifest.json").read_text())
+                self.assertEqual(selected_manifest["policy_name"], name)
+                self.assertEqual(selected_manifest["policy_sha256"], sha256(Path(selected.__file__).read_bytes()))
+
 
 
 if __name__ == "__main__":

@@ -161,6 +161,8 @@ def decide(observation: sc2api_pb2.ResponseObservation, memory: dict, *,
     arena = arena or {}
     obs = observation.observation
     loop, player_id = int(obs.game_loop), int(obs.player_common.player_id)
+    if loop < arena.get("ready_game_loops", 0):
+        return [], {}, {"mode": "preparation"}
     if memory.get("player_id") != player_id or loop < memory.get("game_loop", 0):
         memory = {}
     allowed = set(arena.get("unit_type_ids", UNIT_TYPES))

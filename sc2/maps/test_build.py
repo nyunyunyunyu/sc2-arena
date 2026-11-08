@@ -21,6 +21,13 @@ class BuildTest(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 rule_source(invalid)
 
+    def test_preparation_loop_count_is_nonnegative_integer(self):
+        rules = json.loads((Path(__file__).parents[1] / "rules.json").read_text())
+        self.assertIn("const int arenaReadyLoops = 112;", rule_source(rules))
+        for value in (-1, 1.5, True):
+            with self.assertRaises(AssertionError):
+                rule_source(dict(rules, ready_game_loops=value))
+
     def test_counter_triangle_and_public_data(self):
         rules = json.loads((Path(__file__).parents[1] / "rules.json").read_text())
         fast, slow, ranged = (rules["combat"][name] for name in ("Zergling", "Zealot", "Marine"))

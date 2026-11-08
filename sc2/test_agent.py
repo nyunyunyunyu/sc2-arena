@@ -40,6 +40,14 @@ def arena():
 
 
 class PolicyTests(unittest.TestCase):
+    def test_preparation_sends_no_orders_and_discards_old_memory(self):
+        config = dict(arena(), ready_game_loops=112)
+        for loop in (0, 60, 111):
+            actions, memory, reason = decide(observation(unit(1, 6, 16), loop=loop), {"stale": True}, arena=config)
+            self.assertEqual((actions, memory, reason), ([], {}, {"mode": "preparation"}))
+        actions, _, _ = decide(observation(unit(1, 6, 16), loop=112), {}, arena=config)
+        self.assertTrue(actions)
+
     def test_spear_bonus_targets_only_cavalry(self):
         config = arena()
         config["unit_data"].update({

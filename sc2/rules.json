@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "map_name": "ThreeSoldiersCounterRingClose",
-  "map_file": "maps/ThreeSoldiersCounterRingClose.SC2Map",
+  "map_name": "ThreeSoldiersCounterRingSeries",
+  "map_file": "maps/ThreeSoldiersCounterRingSeries.SC2Map",
   "players": 2,
   "race": "Terran",
   "center": [
@@ -30,6 +30,8 @@
     6
   ],
   "duration_seconds": 300,
+  "ready_game_loops": 112,
+  "end_hold_seconds": 5,
   "units": [
     "Zealot",
     "Zergling",

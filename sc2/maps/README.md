@@ -1,6 +1,6 @@
 # Three Soldiers Ring map
 
-The current `ThreeSoldiersCounterRingClose.SC2Map` is built from Blizzard's old `Flat32.SC2Map` by replacing
+The current `ThreeSoldiersCounterRingSeries.SC2Map` is built from Blizzard's old `Flat32.SC2Map` by replacing
 the placed objects, Galaxy scenario script, trigger-editor metadata, title and
 neutral marker data.
 The original 32×32 terrain, pathing, player slots and native `VoidMulti.SC2Mod`
@@ -27,14 +27,22 @@ strikes per cycle. Data fields follow the original catalogs published by
 [SC2Mapster](https://github.com/SC2Mapster/SC2GameData). No third-party runtime is added.
 The map enables only move/attack/stop abilities; extra native skills are hidden and disabled.
 
-All five circles use 280 small native neutral Beacon models at exact world-space
+All five circles use 280 neutral Beacon units with small native white sphere models at exact world-space
 circle coordinates (96/76/56/36/16 points). They are invulnerable, unselectable and
 untargetable, grant no vision and are excluded from the six combat-unit references
-used for damage and results. The active circle has larger markers. Markers remain
+used for damage and results. The active circle has larger markers. White geometry replaces the original green emissive
+beacon art so tint colors remain visible. After a shrink,
+the active and outer circles are red; future inner circles remain green. Markers remain
 visible in unexplored areas without revealing enemy units. The camera is centered
-and set to distance 40 once at initialization, without changing pitch or yaw; it is
-never periodically locked. The previous distance-60 `ThreeSoldiersCounterRing.SC2Map`
-is retained byte-for-byte for replay bindings.
+and set to distance 30 once at initialization, without changing pitch or yaw.
+AI LAN participants send the map chat command `AI: overview camera`, which sets only
+the sender's camera to distance 100 and recenters it. It never changes visibility
+or locks the camera. The previous Near map is preserved for existing replays. The previous distance-40 `ThreeSoldiersCounterRingClose.SC2Map`
+and distance-60 `ThreeSoldiersCounterRing.SC2Map` are retained byte-for-byte for replay bindings.
+
+All six soldiers are paused for the first 112 game loops (about 5 wall seconds
+at Faster). A map countdown is displayed; the public match clock stays zero until
+preparation ends. AI sends no unit orders during preparation.
 
 A map dialog displays the next shrink and time remaining in the native client.
 A second native dialog displays all three custom stat lines and the shared rules.

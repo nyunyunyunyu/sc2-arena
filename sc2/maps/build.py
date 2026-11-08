@@ -64,6 +64,8 @@ def combat_strings(rules):
 
 def rule_source(rules):
     assert rules["schema_version"] == 1 and rules["players"] == 2
+    ready_loops = rules.get("ready_game_loops", 0)
+    assert type(ready_loops) is int and ready_loops >= 0
     native_ids = {"Marine": 48, "Marauder": 51, "Hellion": 53, "Zealot": 73, "Zergling": 105}
     assert len(rules["units"]) == 3
     assert rules["unit_type_ids"] == [native_ids[name] for name in rules["units"]]
@@ -76,6 +78,7 @@ def rule_source(rules):
              f"const fixed arenaCenterX = {rules['center'][0]};",
              f"const fixed arenaCenterY = {rules['center'][1]};",
              f"const int arenaDuration = {rules['duration_seconds']};",
+             f"const int arenaReadyLoops = {rules.get('ready_game_loops', 0)};",
              "fixed[5] arenaRadii;", "int[5] arenaStarts;", "fixed[5] arenaDamage;",
              "string[3] arenaTypes;", "fixed[6] arenaSpawnX;", "fixed[6] arenaSpawnY;",
              "void InitArenaRules () {"]

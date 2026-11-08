@@ -7,11 +7,15 @@ from pysc2.lib import portspicker
 from .arena_env import ArenaEnv
 
 
-def window_options(visible):
-    return dict(window_size=(1600, 900) if visible else (640, 480),
+def window_options(visible, *, windowed=False):
+    full_screen = visible and not windowed
+    return dict(full_screen=full_screen,
+                window_size=(1600, 900) if visible else (640, 480),
                 window_loc=(40, 40),
                 # Limit native drawing, independently of simulation and AI cadence.
-                extra_args=[f"-frameratecap={120 if visible else 30}", "-frameratecapglue=30"])
+                # PySC2 mode 1 leaves desktop margins on ultrawide screens; mode 2 is exclusive.
+                extra_args=[f"-frameratecap={120 if visible else 30}", "-frameratecapglue=30"] +
+                           (["-displayMode", "2"] if full_screen else []))
 
 
 def set_client_window(pid, title=None):
@@ -51,8 +55,9 @@ def set_client_window(pid, title=None):
 
 
 class WindowsArenaEnv(ArenaEnv):
-    def __init__(self, *, human_slot=None, **kwargs):
+    def __init__(self, *, human_slot=None, windowed=False, **kwargs):
         self.native_human_slot = human_slot
+        self.native_windowed = windowed
         try:
             super().__init__(**kwargs)
         except BaseException:
@@ -66,7 +71,7 @@ class WindowsArenaEnv(ArenaEnv):
         for slot, interface in enumerate(self._interface_options):
             process = self._run_config.start(
                 extra_ports=self._ports, want_rgb=interface.HasField("render"),
-                **window_options(slot == self.native_human_slot))
+                **window_options(slot == self.native_human_slot, windowed=self.native_windowed))
             self._sc2_procs.append(process)
             if slot != self.native_human_slot:
                 set_client_window(process.pid)

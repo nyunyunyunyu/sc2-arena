@@ -5,3 +5,5 @@
 __pycache__/
 *.py[cod]
 sc2/runs/
+/.env
+/.env.*

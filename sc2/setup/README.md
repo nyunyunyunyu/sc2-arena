@@ -2,25 +2,51 @@
 
 ## Windows native client
 
-The Windows launcher uses the existing installation at
-`C:\Program Files (x86)\StarCraft II`, or the `SC2PATH` environment variable.
-It does not use the Linux executable or the PyGame viewer.
-
-From the project root, with `uv` installed:
+Double-click `start.cmd` in the repository root, or run it from PowerShell:
 
 ```powershell
-.\sc2\setup\windows.ps1
-.\sc2\start-windows.ps1
+.\start.cmd
+.\start.cmd host --control human
+.\start.cmd join --address 192.168.1.20 --control human
 ```
 
-The setup creates `.deps/sc2-win` with Python 3.10 and the existing locked
-`sc2/requirements.txt`. Press Enter in PowerShell when ready, then switch to
-the native human window while it loads. The game starts automatically when
-loading completes. Human matches use the engine's real-time mode; unlike the
-older stepped version, there is no console wait or 3-second delay after joining.
-The AI client is
-hidden by its process ID after startup and map loading. The human window title
-identifies it and explains how to begin. Loading may still briefly show windows.
+The launcher prepares the isolated `.deps/sc2-win` Python 3.10 environment and
+checks the pinned `sc2/requirements.txt` on each launch. If uv is missing, it
+uses the [official standalone installer](https://docs.astral.sh/uv/reference/installer/)
+for uv 0.12.8, installing into `.deps/uv` without modifying the system PATH or
+shell profile. Python downloads and caches also stay inside the project.
+The initial setup needs internet access; StarCraft II itself must already be installed.
+`sc2/setup/windows.ps1` remains available for installing only the Python environment.
+
+SC2 path precedence: the `SC2PATH` environment variable, then root `.env`, then
+an interactive prompt. The prompt requires the installation folder containing
+`SC2Data` and `Versions/Base*/SC2_x64.exe`; invalid paths are requested again,
+and empty input cancels startup. A validated path is persisted as:
+
+```dotenv
+SC2PATH="C:\Program Files (x86)\StarCraft II"
+```
+
+The loader reads this value as literal text, preserves unrelated `.env` lines,
+and never evaluates `.env` as PowerShell. `.env` is ignored by Git; each computer
+keeps its own path. Existing `sc2/start-windows.ps1` commands also use this setup.
+Help (`--help`) skips the game-path prompt and never launches SC2.
+
+LAN rooms now default to an empty password on both sides. Use the same
+`--key my-room-key` on both commands for optional password protection.
+Press Enter in PowerShell when ready, then switch to the native human window
+while it loads. The game starts automatically after loading. In local human/AI
+mode the AI window is hidden after startup and loading; loading can briefly
+show windows. Visible native clients default to exclusive full screen at the SC2-configured resolution; pass `--windowed`
+for a 1600x900 window. The visible renderer is capped at 120 FPS, hidden clients at 30 FPS.
+
+Use `start.cmd host --control ai --no-window` (or `join --address <host> --control ai --no-window`)
+to hide an AI participant. `start.cmd duel --no-window` explicitly requests the duel's
+existing background mode. Human play rejects `--no-window`; it is mutually exclusive
+with `--windowed` and duel RGB capture. Windows still runs its graphical client and
+hides it after startup/loading, so this is not a no-render engine. Linux AI runs headless.
+The older `--hidden` LAN flag remains for diagnostics, including unattended human slots;
+`--no-window` AI games keep normal match provenance.
 
 Both participants use the installed `latest` engine, verified here as
 5.0.17.98310 / Base98310 / data `9C1F3D3D30CA252E33FC67CA05CBE1EA`.

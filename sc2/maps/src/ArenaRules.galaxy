@@ -3,6 +3,7 @@ const bool arenaCustomCombat = true;
 const fixed arenaCenterX = 16.0;
 const fixed arenaCenterY = 16.0;
 const int arenaDuration = 300;
+const int arenaReadyLoops = 112;
 fixed[5] arenaRadii;
 int[5] arenaStarts;
 fixed[5] arenaDamage;

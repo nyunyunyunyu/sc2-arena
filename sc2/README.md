@@ -2,7 +2,9 @@
 
 当前默认是双方属性完全相同的 **轻骑＋长枪＋弓手**。借用跳虫、狂热者、陆战队员的造型，使用用户授权的自定义数值，零升级、零护甲、无护盾/回血/额外技能。地图负责缩圈、伤害和终局，Python 规则只控制本方单位。人机优先使用 **Windows 原生 SC2 界面**，Linux SC2 4.10 的 RGB/Pygame 入口也保留。
 
-新图为 `maps/ThreeSoldiersCounterRingClose.SC2Map`。开局镜头距离从 60 调为 40，仅调整距离，俯仰和朝向不变；仍可自由平移镜头。原 `ThreeSoldiersCounterRing.SC2Map` 保留供旧录像使用。旧原生近战图 `maps/ThreeSoldiersMeleeRing.SC2Map` 和旧三远程图 `maps/ThreeSoldiersRing.SC2Map` 的原始字节保留，旧录像仍可回放。旧组合分别用 `--rules sc2/rules-melee-native.json` 和 `--rules sc2/rules-terran.json` 启动。旧局不能计作新组合的战绩。
+当前地图为 `maps/ThreeSoldiersCounterRingSeries.SC2Map`。真人镜头距离 30，AI 联机窗口使用居中距离 100，俯仰和朝向不变。每局先冻结全部六兵并显示约 5 秒准备倒计时，之后才开始比赛和缩圈计时；原生人机和联机结束后保留画面 5 秒。第一次缩圈后，当前边界及外圈变红，未来内圈保持绿色。
+
+host 可用 `--rounds 5` 连打 5 局，join 自动跟随；客户端复用且每局单独保存录像，详见 [联机说明](LAN.md)。旧 `ThreeSoldiersCounterRingNear.SC2Map`、`ThreeSoldiersCounterRingClose.SC2Map`、`ThreeSoldiersCounterRing.SC2Map`、`ThreeSoldiersMeleeRing.SC2Map` 和 `ThreeSoldiersRing.SC2Map` 原始字节均保留供旧录像使用。旧原生组合分别用 `--rules sc2/rules-melee-native.json` 和 `--rules sc2/rules-terran.json` 启动。
 
 数值的时间单位与缩圈 HUD 相同，都是场景秒（16 loops）；Faster 下每墙秒约推进 1.4 场景秒。单一配置源为 `rules.json` 的 `combat`，构建器同时生成数据 XML 和原生界面的属性说明。
 
@@ -16,25 +18,37 @@
 
 克制验证用 `python -m sc2.maps.matchup_probe --output <新目录>`：快近战对站定/走打弓手、长枪对轻骑、长枪对站定弓手、弓手风筝长枪，各交换双方一次。每局诊断移除四个无关单位后，使用真实引擎伤害和移动，必须在首次缩圈之前取得预期结果。诊断不计入真人或训练 AI 胜率。
 
-镜头调整前的战斗配置验证汇总见 `runs/counter-validation.json`：39 项离线测试通过，`counter-matchups-002` 十个换边案例全部通过。轻骑胜弓手后剩 52 HP、胜走打弓手后剩 58/64 HP；长枪胜轻骑后剩 60 HP、胜直接对 A 的弓手后剩 22 HP；走打弓手胜长枪后剩 44/60 HP。另有 `counter-clock-002`、`counter-hazard-001`、`counter-mirror-002` 通过时钟/圈伤、同时全灭平局和完整镜像对战。13 局全为同一最终地图哈希、零动作错误、已保存录像。这些记录对应距离 60 的旧图，SHA256：`2c1d875608214e234fcb3a32cd7144832e2472a38ba73c92bd5f3ca789eef4cc`。距离 40 的新版仅改变开局镜头，兵种与战斗规则保持一致。新阵容尚未真人实测，原生属性面板可读性尚未目视确认。
+镜头调整前的战斗配置验证汇总见 `runs/counter-validation.json`：39 项离线测试通过，`counter-matchups-002` 十个换边案例全部通过。轻骑胜弓手后剩 52 HP、胜走打弓手后剩 58/64 HP；长枪胜轻骑后剩 60 HP、胜直接对 A 的弓手后剩 22 HP；走打弓手胜长枪后剩 44/60 HP。另有 `counter-clock-002`、`counter-hazard-001`、`counter-mirror-002` 通过时钟/圈伤、同时全灭平局和完整镜像对战。13 局全为同一最终地图哈希、零动作错误、已保存录像。这些记录对应距离 60 的旧图，SHA256：`2c1d875608214e234fcb3a32cd7144832e2472a38ba73c92bd5f3ca789eef4cc`。距离 40 和 30 的后续版本仅改变开局镜头，兵种与战斗规则保持一致。新阵容尚未真人实测，原生属性面板可读性尚未目视确认。
 
 旧原生近战版本的 37 项离线检查、`melee-mirror-001`、`melee-clock-001`、`melee-simultaneous_hazard-001` 及 `sc2/runs/melee-validation.json` 仅证明旧图；其 SHA256 是 `77c482399367e36d898f8b4c13b9b83f6b5d6f46b4c1b478dffafc95bede01c1`。
 
 ## 两台电脑联机
 
-`start-windows.ps1 host --control human` 建房，另一台运行 `start-windows.ps1 join --address <房主IPv4> --control human`。任一方可将 `human` 改为 `ai`，各自只启动一个原生客户端。连接步骤、口令、网络端口与记录见 [LAN.md](LAN.md)。
+`start-windows.ps1 host --control human` 建房，另一台运行 `start-windows.ps1 join --address <房主IPv4> --control human`。任一方可将 `human` 改为 `ai`，各自只启动一个原生客户端。默认空密码，可用 `--key` 设置可选密码。AI 端可加 `--no-window` 隐藏游戏窗口；可见端默认全屏，加 `--windowed` 使用窗口模式。连接步骤、网络端口与记录见 [LAN.md](LAN.md)。
 
 ## Windows 原生界面
 
-本机隔离环境已安装。在项目根目录的 PowerShell 运行：
+推荐双击根目录 `start.cmd`：自动安装/检查依赖，首次询问未配置的 SC2 路径并保存到 `.env`。原入口也已接入相同流程，在项目根目录的 PowerShell 运行：
 
 ```powershell
 .\sc2\start-windows.ps1
 ```
 
-启动器自动连接人类和 AI 两方，不需要在战网大厅选择电脑玩家。**先在 PowerShell 按 Enter 确认准备好，再切到随后打开的「三兵缩圈 — 玩家窗口」；地图加载完成自动开局。** Windows 人机已改为实时运行，因此不再在地图第 0 帧等待终端输入或额外停 3 秒。游戏窗口中的 Enter 是聊天键。使用 SC2 原生鼠标、编队、快捷键和镜头操作；**Esc 是原生菜单键**，旧 PyGame 的 F4/F5 等按键说明不适用于此入口。
+双击后可选对手：`1` / `default` 为原有 AI，`2` / `a` 为决赛冠军 A，`3` / `b` 为决赛 B，`4` / `a2` 为护弓修订版 A2，`5` / `a3` 为最新远程残局修订版 A3；直接按 Enter 保持原有 AI。也可跳过选择菜单：
 
-地图、策略、正常视野和录像采集保持一致。AI 的第二个客户端在启动和地图加载后按其进程 ID 隐藏，人类客户端以 1600×900 窗口启动。不要手动关闭 AI 客户端，这会中断连接。Windows 人机的 `realtime=true` 由引擎连续运行；Python 约每 4 loops 采样、最多每 4 loops 决策一次，迟到的观测按实际 loop 记录，不再按整除判断而漏掉 AI 决策。采集不会暂停引擎。Linux/PyGame、离线 duel 和原生 watch 仍保留原步进方式。
+```powershell
+.\start.cmd human --ai a3
+.\start.cmd human --ai a2
+.\start.cmd human --ai a
+.\start.cmd human --ai b
+.\start.cmd human --ai default
+```
+
+A/B 是决赛冻结版的原样副本，双方属性和正常视野规则不变。每局记录所选 `policy_name` 与源码哈希。A 的 3:0 决赛成绩来自 Linux 4.10，不能当作 Windows 人机胜率。命令行不传 `--ai` 时仍使用原有 AI；`duel --ai a` 会让两侧使用同一个 A 策略。联机各自选择本方 AI，例如 `start.cmd join --address 192.168.1.20 --control ai --ai b`；真人端不替远端选择 AI。联机的 `--yes` 会跳过选择菜单和准备提示，未传 `--ai` 时保持原有 AI。
+
+启动器自动连接人类和 AI 两方，不需要在战网大厅选择电脑玩家。**先在 PowerShell 按 Enter 确认准备好，再切到随后打开的「三兵缩圈 — 玩家窗口」；地图加载后先显示 5 秒准备倒计时，再开始战斗。** 倒计时由地图冻结双方单位并统一释放，结束画面保留 5 秒。游戏窗口中的 Enter 是聊天键。使用 SC2 原生鼠标、编队、快捷键和镜头操作；**Esc 是原生菜单键**，旧 PyGame 的 F4/F5 等按键说明不适用于此入口。
+
+地图、策略、正常视野和录像采集保持一致。AI 的第二个客户端在启动和地图加载后按其进程 ID 隐藏，人类客户端默认独占全屏，`--windowed` 可恢复 1600×900 窗口。不要手动关闭 AI 客户端，这会中断连接。Windows 人机的 `realtime=true` 由引擎连续运行；Python 约每 4 loops 采样、最多每 4 loops 决策一次，迟到的观测按实际 loop 记录，不再按整除判断而漏掉 AI 决策。采集不会暂停引擎。Linux/PyGame、离线 duel 和原生 watch 仍保留原步进方式。
 
 ```powershell
 # 原生窗口回放同版本录像；保留同目录的 manifest.json

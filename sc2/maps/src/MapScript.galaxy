@@ -5,6 +5,7 @@ unit[6] arenaUnits;
 unit[280] ringMarks;
 int[5] ringCounts;
 int[5] ringOffsets;
+int arenaReadyTicks = 0;
 int arenaTicks = 0;
 int arenaPhase = 0;
 int arenaHud;
@@ -15,16 +16,17 @@ void UpdateRings () {
     int mark;
     color tint;
     while (ring < 5) {
-        tint = Color(75.0, 100.0, 100.0);
+        tint = Color(25.0, 100.0, 45.0);
         if (ring == arenaPhase) { tint = Color(100.0, 85.0, 10.0); }
+        if (arenaPhase > 0 && ring <= arenaPhase) { tint = Color(100.0, 0.0, 0.0); }
         mark = 0;
         while (mark < ringCounts[ring]) {
             libNtve_gf_SendActorMessageToUnit(ringMarks[ringOffsets[ring] + mark],
-                libNtve_gf_SetTintColor(tint, 2.0, 0.0));
+                libNtve_gf_SetTintColor(tint, 1.0, 0.0));
             if (ring == arenaPhase) {
-                UnitSetScale(ringMarks[ringOffsets[ring] + mark], 24.0, 24.0, 24.0);
+                UnitSetScale(ringMarks[ringOffsets[ring] + mark], 48.0, 48.0, 48.0);
             }
-            else { UnitSetScale(ringMarks[ringOffsets[ring] + mark], 16.0, 16.0, 16.0); }
+            else { UnitSetScale(ringMarks[ringOffsets[ring] + mark], 32.0, 32.0, 32.0); }
             mark += 1;
         }
         ring += 1;
@@ -40,6 +42,10 @@ void UpdateHud () {
     DialogControlSetPropertyAsText(arenaHud, c_triggerControlPropertyText, PlayerGroupAll(),
         StringToText("THREE SOLDIERS  |  " + next + "  |  End: " +
         IntToString(arenaDuration - seconds) + "s  |  Ring " + IntToString(arenaPhase + 1) + "/5"));
+    if (arenaReadyTicks < arenaReadyLoops) {
+        DialogControlSetPropertyAsText(arenaHud, c_triggerControlPropertyText, PlayerGroupAll(),
+            StringToText("GET READY  |  " + IntToString(FixedToInt(Ceiling((arenaReadyLoops - arenaReadyTicks) / 22.4))) + "s"));
+    }
     // The curriculum score is a public clock, never the match result.
     PlayerModifyPropertyFixed(1, c_playerPropCurriculumScore, c_playerPropOperSetTo, arenaTicks / 16.0);
     PlayerModifyPropertyFixed(2, c_playerPropCurriculumScore, c_playerPropOperSetTo, arenaTicks / 16.0);
@@ -72,6 +78,18 @@ bool ArenaTick (bool testConds, bool runActions) {
     fixed dy;
     fixed life;
     if (!runActions || arenaFinished) { return true; }
+    if (arenaReadyTicks < arenaReadyLoops) {
+        arenaReadyTicks += 1;
+        if (arenaReadyTicks == 16) { UpdateRings(); }
+        if (arenaReadyTicks == arenaReadyLoops) {
+            while (i < 6) {
+                UnitSetState(arenaUnits[i], c_unitStatePaused, false);
+                i += 1;
+            }
+        }
+        UpdateHud();
+        return true;
+    }
     arenaTicks += 1;
     seconds = arenaTicks / 16;
     if (arenaPhase < 4 && seconds >= arenaStarts[arenaPhase + 1]) {
@@ -107,6 +125,13 @@ bool ArenaTick (bool testConds, bool runActions) {
     return true;
 }
 
+bool WideCamera (bool testConds, bool runActions) {
+    if (!runActions) { return true; }
+    CameraPan(EventPlayer(), Point(arenaCenterX, arenaCenterY), 0.0, -1.0, 10.0, false);
+    CameraSetValue(EventPlayer(), c_cameraValueDistance, 100.0, 0.0, -1.0, 10.0);
+    return true;
+}
+
 bool ArenaInit (bool testConds, bool runActions) {
     int i = 0;
     int player;
@@ -132,6 +157,7 @@ bool ArenaInit (bool testConds, bool runActions) {
         UnitCreate(1, arenaTypes[i % 3], c_unitCreateIgnorePlacement, player,
             Point(arenaSpawnX[i], arenaSpawnY[i]), (player - 1) * 180.0);
         arenaUnits[i] = UnitLastCreated();
+        UnitSetState(arenaUnits[i], c_unitStatePaused, arenaReadyLoops > 0);
         if (arenaCustomCombat) {
             abilityIndex = 0;
             while (abilityIndex < UnitAbilityCount(arenaUnits[i])) {
@@ -186,8 +212,10 @@ bool ArenaInit (bool testConds, bool runActions) {
     UpdateHud();
     CameraPan(1, Point(arenaCenterX, arenaCenterY), 0.0, -1.0, 10.0, false);
     CameraPan(2, Point(arenaCenterX, arenaCenterY), 0.0, -1.0, 10.0, false);
-    CameraSetValue(1, c_cameraValueDistance, 40.0, 0.0, -1.0, 10.0);
-    CameraSetValue(2, c_cameraValueDistance, 40.0, 0.0, -1.0, 10.0);
+    CameraSetValue(1, c_cameraValueDistance, 30.0, 0.0, -1.0, 10.0);
+    CameraSetValue(2, c_cameraValueDistance, 30.0, 0.0, -1.0, 10.0);
+    tick = TriggerCreate("WideCamera");
+    TriggerAddEventChatMessage(tick, c_playerAny, "AI: overview camera", true);
     tick = TriggerCreate("ArenaTick");
     TriggerAddEventTimePeriodic(tick, 0.0625, c_timeGame);
     return true;

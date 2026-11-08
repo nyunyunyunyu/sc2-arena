@@ -85,6 +85,9 @@ def arena_clock(arena, observation):
 def arena_hud(arena, observation):
     if not arena:
         return ""
+    remaining = arena.get("ready_game_loops", 0) - observation.observation.game_loop
+    if remaining > 0:
+        return "GET READY | %ds" % math.ceil(remaining / 22.4)
     seconds, phase = arena_clock(arena, observation)
     if seconds is None:
         return "Arena clock unavailable"
@@ -118,7 +121,8 @@ class ArenaRenderer(renderer_human.RendererHuman):
         for index, radius in enumerate(self.arena["radii"]):
             active = index == phase
             vertices = projected_ring(self.arena["center"], radius, surf.world_to_surf)
-            pygame.draw.lines(surf.surf, (255, 220, 40) if active else (80, 150, 175),
+            color = (255, 40, 40) if phase and index <= phase else (255, 220, 40) if active else (80, 220, 110)
+            pygame.draw.lines(surf.surf, color,
                               True, vertices, 3 if active else 1)
 
     def draw_screen(self, surf):

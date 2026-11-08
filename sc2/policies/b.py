@@ -1,0 +1,389 @@
+"""Transparent three-unit policy; memory and engine-derived arena data are explicit."""
+
+from __future__ import annotations
+
+import math
+
+from s2clientprotocol import raw_pb2, sc2api_pb2
+
+ATTACK, MOVE, STOP = 23, 16, 4
+UNIT_TYPES = (48, 51, 53)
+CADENCE = 4
+
+
+def _xy(unit):
+    return (unit.pos.x, unit.pos.y)
+
+
+def _distance(a, b):
+    return math.hypot(a[0] - b[0], a[1] - b[1])
+
+
+def _inside(point, center, radius):
+    distance = _distance(point, center)
+    if distance <= radius:
+        return point
+    return tuple(c + (p - c) * radius / distance for p, c in zip(point, center))
+
+
+def _unit_data(unit, arena):
+    return arena.get("unit_data", {}).get(str(unit.unit_type), {})
+
+
+def _weapon(unit, arena):
+    return next((w for w in _unit_data(unit, arena).get("weapons", [])
+                 if w.get("type", 1) in (1, 3)), None)
+
+
+def _damage(unit, enemy, arena):
+    weapon = _weapon(unit, arena)
+    if weapon is None:
+        return 0.0
+    enemy_data = _unit_data(enemy, arena)
+    bonus = sum(b["bonus"] for b in weapon.get("damage_bonus", [])
+                if b["attribute"] in enemy_data.get("attributes", []))
+    # shortcut: reserve primary-target damage only; add splash if replay evidence warrants it.
+    shield, damage = float(enemy.shield), 0.0
+    for _ in range(weapon.get("attacks", 1)):
+        hit = weapon["damage"] + bonus
+        # Zero-upgrade shields have no armor; body armor applies after shield overflow.
+        absorbed = min(shield, hit)
+        shield -= absorbed
+        damage += absorbed
+        if hit > absorbed:
+            damage += max(0.5, hit - absorbed - enemy_data.get("armor", 0))
+    return damage
+
+
+def _range(unit, enemy, arena):
+    weapon = _weapon(unit, arena)
+    return (weapon["range"] + unit.radius + enemy.radius) if weapon else None
+
+
+def _circle(arena, obs, own):
+    if "center" not in arena:
+        return None, None, {"clock_verified": False}
+    center = tuple(arena["center"])
+    radii, starts = arena["radii"], arena["phase_start_seconds"]
+    if (len(center) != 2 or not all(math.isfinite(x) for x in center)
+            or not radii or len(radii) != len(starts)
+            or any(not math.isfinite(r) or r <= 0 for r in radii)
+            or starts[0] != 0 or any(not math.isfinite(s) for s in starts)
+            or any(b <= a for a, b in zip(starts, starts[1:]))
+            or any(b > a for a, b in zip(radii, radii[1:]))):
+        raise ValueError("Invalid arena circle geometry or schedule")
+    verified = arena.get("clock_verified", False)
+    phase, seconds = 0, None
+    source = "unavailable"
+    if (arena.get("clock_source") == "observation.score.score"
+            and obs.HasField("score") and obs.score.HasField("score")):
+        seconds, source = float(obs.score.score), "observation.score.score"
+    elif verified:
+        scale = arena.get("game_seconds_per_loop")
+        if scale is None or not math.isfinite(scale) or scale <= 0:
+            raise ValueError("A verified arena clock needs game_seconds_per_loop > 0")
+        seconds = max(0, obs.game_loop - arena.get("origin_game_loop", 0)) * scale
+        source = "calibrated_game_loop"
+    if seconds is not None:
+        phase = max(i for i, start in enumerate(starts) if start <= seconds)
+    radius = radii[phase]
+    anticipate = False
+    if seconds is not None and phase + 1 < len(radii):
+        travel = 0.0
+        for unit in own:
+            speed = _unit_data(unit, arena).get("movement_speed", 0)
+            if speed > 0:
+                travel = max(travel, max(0, _distance(_xy(unit), center) - radii[phase + 1] + 0.5) / speed)
+        # shortcut: native speed is an ETA estimate; lock its clock relation in engine calibration.
+        anticipate = starts[phase + 1] - seconds <= max(5.0, travel + 3.0)
+        if anticipate:
+            radius = radii[phase + 1]
+    return center, radius, {"clock_verified": bool(verified), "game_seconds": seconds,
+                            "clock_source": source,
+                            "phase": phase, "radius": radii[phase],
+                            "movement_radius": radius, "anticipating": anticipate}
+
+
+def _command(ability, target=None):
+    command = {"ability": ability}
+    if isinstance(target, int):
+        command["target_tag"] = target
+    elif target is not None:
+        command["point"] = [round(target[0], 3), round(target[1], 3)]
+    return command
+
+
+def _same(a, b):
+    if not a or not b or a["ability"] != b["ability"]:
+        return False
+    if a.get("target_tag") != b.get("target_tag"):
+        return False
+    if "point" in a or "point" in b:
+        return "point" in a and "point" in b and _distance(a["point"], b["point"]) <= 0.4
+    return True
+
+
+def _ordered(unit, command):
+    if not unit.orders:
+        return False
+    order = unit.orders[0]
+    # General and concrete Move/Attack ability IDs both occur in RAW orders.
+    ability = {3794: MOVE, 3674: ATTACK, 3665: STOP}.get(order.ability_id, order.ability_id)
+    current = _command(ability)
+    if order.HasField("target_unit_tag"):
+        current["target_tag"] = int(order.target_unit_tag)
+    elif order.HasField("target_world_space_pos"):
+        current["point"] = [order.target_world_space_pos.x, order.target_world_space_pos.y]
+    return _same(current, command)
+
+
+def _action(tag, command):
+    result = sc2api_pb2.Action()
+    raw = result.action_raw.unit_command
+    raw.ability_id = command["ability"]
+    raw.unit_tags.append(tag)
+    raw.queue_command = False
+    if "target_tag" in command:
+        raw.target_unit_tag = command["target_tag"]
+    elif "point" in command:
+        raw.target_world_space_pos.x, raw.target_world_space_pos.y = command["point"]
+    return result
+
+
+def decide(observation: sc2api_pb2.ResponseObservation, memory: dict, *,
+           arena: dict | None = None) -> tuple[list[sc2api_pb2.Action], dict, dict]:
+    """Use only this player's RAW observation; never retain enemy hidden state.
+
+    arena adds map geometry/verified clock and optional engine ``unit_data``.
+    ``attack_commit_loops`` defaults to a provisional 8-loop protection window.
+    All returned memory/reasons are JSON compatible; inputs are not mutated.
+    """
+    arena = arena or {}
+    obs = observation.observation
+    loop, player_id = int(obs.game_loop), int(obs.player_common.player_id)
+    if loop < arena.get("ready_game_loops", 0):
+        return [], {}, {"mode": "preparation"}
+    if memory.get("player_id") != player_id or loop < memory.get("game_loop", 0):
+        memory = {}
+    allowed = set(arena.get("unit_type_ids", UNIT_TYPES))
+    dead = set(obs.raw_data.event.dead_units)
+    units = [u for u in obs.raw_data.units if u.unit_type in allowed and u.tag not in dead
+             and u.HasField("pos") and (not u.HasField("health") or u.health > 0)]
+    own = sorted((u for u in units if u.alliance == raw_pb2.Self), key=lambda u: u.tag)
+    enemies = [u for u in units if u.alliance == raw_pb2.Enemy
+               and u.display_type == raw_pb2.Visible and not u.is_blip
+               and u.cloak != raw_pb2.Cloaked]
+    visible = {int(u.tag) for u in enemies}
+    center, radius, ring = _circle(arena, obs, own)
+    squad = tuple(sum(_xy(u)[i] for u in own) / len(own) for i in (0, 1)) if own else center
+    actions, states, reasons, reserved = [], {}, [], {}
+    roles = {48, 73, 105} <= allowed
+    commit = int(arena.get("attack_commit_loops", 4 if roles else 8))
+    if commit < 0:
+        raise ValueError("attack_commit_loops must be nonnegative")
+
+    # Larger shots are allocated first, so smaller shots can finish remaining health.
+    own.sort(key=lambda u: (-max((_damage(u, e, arena) for e in enemies), default=0), u.tag))
+    for unit in own:
+        tag, pos = int(unit.tag), _xy(unit)
+        prior = memory.get("units", {}).get(str(tag), {})
+        cooldown = float(unit.weapon_cooldown) if unit.HasField("weapon_cooldown") else None
+        shot = prior.get("shot_loop")
+        if cooldown is not None and prior.get("cooldown") is not None and cooldown > prior["cooldown"] + 0.5:
+            shot = loop
+        can_move = (cooldown is not None and cooldown > CADENCE + 2
+                    and shot is not None and loop - shot >= commit)
+        state = {"cooldown": cooldown, "shot_loop": shot}
+        command, mode, target = None, "hold", None
+        candidates = []
+        outside = center is not None and _distance(pos, center) > radius
+        if outside:
+            command = _command(MOVE, _inside(pos, center, max(0, radius - 0.5)))
+            mode = "enter_circle"
+        else:
+            for enemy in enemies:
+                distance, reach = _distance(pos, _xy(enemy)), _range(unit, enemy, arena)
+                in_range = reach is not None and distance <= reach
+                safe_target = center is None or _distance(_xy(enemy), center) <= radius
+                if (in_range or safe_target) and distance <= (14 if roles else (reach + 4 if reach is not None else 8)) and _distance(_xy(enemy), squad) <= 14:
+                    candidates.append(enemy)
+
+            def target_score(enemy):
+                hp = enemy.health + enemy.shield if enemy.HasField("health") else None
+                left = None if hp is None else hp - reserved.get(int(enemy.tag), 0)
+                damage = _damage(unit, enemy, arena)
+                endangered = [ally for ally in own if ally.health_max > 0 and ally.health / ally.health_max < 0.4]
+                rescue = any(_distance(_xy(enemy), _xy(ally)) <= 6 for ally in endangered)
+                role_cost = 0
+                if roles:
+                    if unit.unit_type == 73:
+                        role_cost = 0 if enemy.unit_type == 105 else 5
+                    elif unit.unit_type == 105:
+                        escorts = [a for a in own if a.unit_type == 73]
+                        covered = any(_distance(_xy(enemy), _xy(a)) <= 6 for a in escorts)
+                        role_cost = -2 if enemy.unit_type == 105 and covered else 0 if enemy.unit_type == 48 else 6 if enemy.unit_type == 105 else 15
+                    elif enemy.unit_type == 105:
+                        role_cost = -2
+                return (left is not None and left <= 0, not rescue,
+                        not (left is not None and 0 < left <= damage),
+                        _distance(pos, _xy(enemy)) + role_cost - damage * 0.12,
+                        left if left is not None else float("inf"), int(enemy.tag))
+
+            if candidates:
+                target = min(candidates, key=target_score)
+                command, mode = _command(ATTACK, int(target.tag)), "attack"
+                reach = _range(unit, target, arena)
+                in_range = reach is not None and _distance(pos, _xy(target)) <= reach
+                neighbours = [ally for ally in own if ally.tag != tag and _distance(pos, _xy(ally)) <= 6]
+                threats = [e for e in enemies if _distance(pos, _xy(e)) <= 6]
+                weak = unit.health_max > 0 and unit.health / unit.health_max < 0.35
+                isolated = _distance(pos, squad) > 4
+                if can_move and (weak or isolated) and threats and len(threats) > len(neighbours):
+                    others = [ally for ally in own if ally.tag != tag]
+                    retreat = _xy(min(others, key=lambda a: _distance(pos, _xy(a)))) if others else center
+                    if retreat is not None and _distance(pos, retreat) > 0.75:
+                        command, mode = _command(MOVE, retreat), "regroup"
+                elif can_move and in_range and _weapon(unit, arena).get("range", 0) > 1:
+                    delta = (pos[0] - target.pos.x, pos[1] - target.pos.y)
+                    length = math.hypot(*delta)
+                    if length > 0:
+                        retreat = (pos[0] + delta[0] / length * 0.8, pos[1] + delta[1] / length * 0.8)
+                        if center is not None:
+                            retreat = _inside(retreat, center, radius)
+                        if _distance(pos, retreat) > 0.4 and _distance(retreat, squad) <= 6:
+                            command, mode = _command(MOVE, retreat), "cooldown_move"
+            else:
+                old_target = prior.get("target_tag")
+                order_target = unit.orders[0].target_unit_tag if unit.orders else 0
+                stale = bool(old_target or order_target)
+                if center is not None and _distance(pos, center) > 1:
+                    command, mode = _command(MOVE, center), "search_center"
+                elif stale:
+                    command, mode = _command(STOP), "clear_target"
+
+        emergency = False
+        if roles and not outside:
+            spears = [e for e in enemies if e.unit_type == 73]
+            allies = [a for a in own if a.unit_type == 73]
+            anchor = _xy(allies[0]) if allies else squad
+            if not enemies and unit.unit_type != 73 and anchor is not None:
+                # Keep the slow escort within support distance during the approach.
+                if _distance(pos, anchor) > 2.8:
+                    command, mode = _command(MOVE, anchor), "escort"
+            elif unit.unit_type == 105 and target is not None and spears:
+                danger = min(_distance(pos, _xy(e)) for e in spears)
+                if danger < 4.2:
+                    goal = _xy(target)
+                    points = [(pos[0] + 1.6 * math.cos(i * math.tau / 24),
+                               pos[1] + 1.6 * math.sin(i * math.tau / 24)) for i in range(24)]
+                    if center is not None:
+                        points = [_inside(p, center, max(0, radius - 0.5)) for p in points]
+                    def route_cost(point):
+                        clearance = min(_distance(point, _xy(e)) for e in spears)
+                        return _distance(point, goal) + 5 * max(0, 3.2 - clearance) ** 2
+                    destination = min(points, key=route_cost)
+                    in_reach = _distance(pos, goal) <= (_range(unit, target, arena) or 0)
+                    if danger < 2.6 or (not in_reach and route_cost(destination) < route_cost(pos) - 0.15):
+                        command, mode = _command(MOVE, destination), "avoid_spear"
+                        emergency = danger < 2.6
+            if unit.unit_type == 105 and allies and enemies and unit.health < 45:
+                # A wounded rider cannot keep trading health inside archer range.
+                protected = [e for e in enemies
+                             if ((e.unit_type == 105 and _distance(_xy(e), anchor) <= 3.5)
+                                 or (e.HasField("health") and e.health + e.shield <= _damage(unit, e, arena)
+                                     and _distance(pos, _xy(e)) <= (_range(unit, e, arena) or 0)
+                                     and cooldown is not None and cooldown <= CADENCE))
+                             and all(_distance(_xy(e), _xy(s)) > 3.2 for s in spears)]
+                if protected:
+                    target = min(protected, key=lambda e: _distance(pos, _xy(e)))
+                    command, mode = _command(ATTACK, int(target.tag)), "defend_escort"
+                else:
+                    ranged = [e for e in enemies if e.unit_type == 48]
+                    source = min(ranged or enemies, key=lambda e: _distance(anchor, _xy(e)))
+                    away = (anchor[0] - source.pos.x, anchor[1] - source.pos.y)
+                    size = math.hypot(*away) or 1
+                    destination = (anchor[0] + away[0] / size * 2.4,
+                                   anchor[1] + away[1] / size * 2.4)
+                    for archer in ranged:
+                        reach = (_range(archer, unit, arena) or 0) + 0.8
+                        delta = (destination[0] - archer.pos.x, destination[1] - archer.pos.y)
+                        distance = math.hypot(*delta)
+                        if distance < reach:
+                            if distance < 0.001:
+                                delta = away if math.hypot(*away) > 0.001 else (1.0, 0.0)
+                                distance = math.hypot(*delta)
+                            destination = (archer.pos.x + delta[0] / distance * reach,
+                                           archer.pos.y + delta[1] / distance * reach)
+                    # At the boundary, clipping a retreat can leave the rider stationary in danger.
+                    goal = destination
+                    points = [(pos[0] + 1.6 * math.cos(i * math.tau / 24),
+                               pos[1] + 1.6 * math.sin(i * math.tau / 24)) for i in range(24)]
+                    if center is not None:
+                        goal = _inside(goal, center, max(0, radius - 0.5))
+                        points = [_inside(p, center, max(0, radius - 0.5)) for p in points]
+                    def withdrawal_cost(point):
+                        melee_risk = sum(5 * max(0, 3.2 - _distance(point, _xy(e))) ** 2 for e in spears)
+                        ranged_risk = sum(2 * max(0, (_range(e, unit, arena) or 0) + 0.8
+                                                  - _distance(point, _xy(e))) ** 2 for e in ranged)
+                        return _distance(point, goal) + melee_risk + ranged_risk
+                    destination = min(points, key=withdrawal_cost)
+                    command, mode = _command(MOVE, destination), "preserve_rider"
+                emergency = True
+            elif unit.unit_type == 48 and enemies:
+                melee = [e for e in enemies if (_weapon(e, arena) or {}).get("range", 0) < 1]
+                threat = min(melee, key=lambda e: _distance(pos, _xy(e))) if melee else None
+                if threat is not None and _distance(pos, _xy(threat)) < 3.0:
+                    danger = _distance(pos, _xy(threat))
+                    if danger < 1.65 or can_move:
+                        if anchor is not None and allies and _distance(pos, anchor) < 7:
+                            away = (anchor[0] - threat.pos.x, anchor[1] - threat.pos.y)
+                            size = math.hypot(*away) or 1
+                            destination = (anchor[0] + away[0] / size * 2.2,
+                                           anchor[1] + away[1] / size * 2.2)
+                        else:
+                            away = (pos[0] - threat.pos.x, pos[1] - threat.pos.y)
+                            size = math.hypot(*away) or 1
+                            destination = (pos[0] + away[0] / size * 1.4,
+                                           pos[1] + away[1] / size * 1.4)
+                        command, mode = _command(MOVE, destination), "screen_retreat"
+                        emergency = danger < 1.65
+
+        if command is not None and "point" in command and center is not None:
+            # Leave room for coordinate rounding at non-cardinal circle edges.
+            command = _command(command["ability"], _inside(command["point"], center, max(0, radius - 0.01)))
+        last = prior.get("last_command")
+        # A short missing order is not an idle signal. Preserve a submitted, still-valid shot.
+        pending = (last and last["ability"] == ATTACK
+                   and last.get("target_tag") in {int(e.tag) for e in candidates}
+                   and ((shot is not None and loop - shot < commit)
+                        or (loop - prior.get("command_loop", -100) < 16
+                            and (shot is None or shot < prior.get("command_loop", 0)))))
+        if pending and not outside and not emergency and command is not None and not _same(command, last):
+            command, mode = last.copy(), "await_shot"
+            target = next(e for e in enemies if e.tag == last["target_tag"])
+        if target is not None:
+            state["target_tag"] = int(target.tag)
+            reach = _range(unit, target, arena)
+            if (command is not None and command["ability"] == ATTACK
+                    and reach is not None and _distance(pos, _xy(target)) <= reach
+                    and (cooldown is None or cooldown <= CADENCE)):
+                reserved[int(target.tag)] = reserved.get(int(target.tag), 0) + _damage(unit, target, arena)
+        issued = False
+        if command is not None:
+            same = _same(command, last)
+            if not _ordered(unit, command) and not (same and loop - prior.get("command_loop", -100) < 16):
+                actions.append(_action(tag, command))
+                state["last_command"], state["command_loop"] = command, loop
+                issued = True
+            elif last:
+                state["last_command"], state["command_loop"] = last, prior.get("command_loop", loop)
+        states[str(tag)] = state
+        reasons.append({"tag": tag, "mode": mode, "target_tag": state.get("target_tag"),
+                        "cooldown": cooldown, "shot_loop": shot, "move_after_shot": can_move,
+                        "command": command, "issued": issued})
+
+    new_memory = {"player_id": player_id, "game_loop": loop, "units": states}
+    reason = {"game_loop": loop, "player_id": player_id, "visible_enemy_tags": sorted(visible),
+              "ring": ring, "attack_commit_loops": commit,
+              "unit_data_available": bool(arena.get("unit_data")), "units": reasons}
+    return actions, new_memory, reason

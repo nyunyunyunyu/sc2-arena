@@ -131,7 +131,8 @@ def main(argv=None):
                 if seconds >= 125:
                     assert all(abs((b["game_loop"] - a["game_loop"]) / 16 -
                                    (b["scenario_seconds"] - a["scenario_seconds"])) < 0.1
-                               for a, b in zip(samples[2:], samples[3:])), "Clock is not 16 loops per scenario second"
+                               for a, b in zip(samples[2:], samples[3:])
+                               if a["game_loop"] >= rules.get("ready_game_loops", 0)), "Clock is not 16 loops per scenario second"
                     assertions["game_seconds_per_loop"] = 1 / 16
                     status = "probe_pass"
                     break
