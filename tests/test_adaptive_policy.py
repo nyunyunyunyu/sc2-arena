@@ -1,8 +1,8 @@
 """Regression cases from the three human wins on 2026-11-07."""
 import unittest
 from s2clientprotocol import raw_pb2 as raw
-from .policies import a, a2
-from .arena_env import validate_actions
+from sc2.policies import a, a2
+from sc2.arena_env import validate_actions
 from .test_agent import arena, observation, unit
 
 

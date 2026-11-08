@@ -5,14 +5,15 @@ import unittest
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
-from .build import rule_source, combat_catalog, combat_strings
+from sc2.maps.build import rule_source, combat_catalog, combat_strings
 
 
 class BuildTest(unittest.TestCase):
     def test_current_and_preserved_native_rosters(self):
-        root = Path(__file__).parents[1]
-        for name in ("rules.json", "rules-terran.json", "rules-melee-native.json"):
+        root = (Path(__file__).parents[1] / "sc2")
+        for name in ("rules.json", "legacy/rules-terran.json", "legacy/rules-melee-native.json"):
             rules = json.loads((root / name).read_text())
+            self.assertTrue((root / name).parent.joinpath(rules["map_file"]).is_file())
             source = rule_source(rules)
             for index, unit in enumerate(rules["units"]):
                 self.assertIn(f'arenaTypes[{index}] = "{unit}";', source)
@@ -22,14 +23,14 @@ class BuildTest(unittest.TestCase):
                 rule_source(invalid)
 
     def test_preparation_loop_count_is_nonnegative_integer(self):
-        rules = json.loads((Path(__file__).parents[1] / "rules.json").read_text())
+        rules = json.loads(((Path(__file__).parents[1] / "sc2") / "rules.json").read_text())
         self.assertIn("const int arenaReadyLoops = 112;", rule_source(rules))
         for value in (-1, 1.5, True):
             with self.assertRaises(AssertionError):
                 rule_source(dict(rules, ready_game_loops=value))
 
     def test_counter_triangle_and_public_data(self):
-        rules = json.loads((Path(__file__).parents[1] / "rules.json").read_text())
+        rules = json.loads(((Path(__file__).parents[1] / "sc2") / "rules.json").read_text())
         fast, slow, ranged = (rules["combat"][name] for name in ("Zergling", "Zealot", "Marine"))
         self.assertGreater(fast["speed"], ranged["speed"])
         self.assertLess(slow["speed"], ranged["speed"])

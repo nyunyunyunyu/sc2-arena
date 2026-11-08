@@ -1,10 +1,10 @@
 """Regressions from the latest A2 human series."""
 import unittest
 from s2clientprotocol import raw_pb2 as raw
-from .policies import a3
+from sc2.policies import a3
 from .test_agent import unit, observation
 from .test_adaptive_policy import config
-from .arena_env import validate_actions
+from sc2.arena_env import validate_actions
 
 
 def decisions(obs):

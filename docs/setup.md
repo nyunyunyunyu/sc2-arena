@@ -11,12 +11,12 @@ Double-click `start.cmd` in the repository root, or run it from PowerShell:
 ```
 
 The launcher prepares the isolated `.deps/sc2-win` Python 3.10 environment and
-checks the pinned `sc2/requirements.txt` on each launch. If uv is missing, it
+checks the pinned `requirements.txt` on each launch. If uv is missing, it
 uses the [official standalone installer](https://docs.astral.sh/uv/reference/installer/)
 for uv 0.12.8, installing into `.deps/uv` without modifying the system PATH or
 shell profile. Python downloads and caches also stay inside the project.
 The initial setup needs internet access; StarCraft II itself must already be installed.
-`sc2/setup/windows.ps1` remains available for installing only the Python environment.
+`scripts/setup/windows.ps1` remains available for installing only the Python environment.
 
 SC2 path precedence: the `SC2PATH` environment variable, then root `.env`, then
 an interactive prompt. The prompt requires the installation folder containing
@@ -29,7 +29,7 @@ SC2PATH="C:\Program Files (x86)\StarCraft II"
 
 The loader reads this value as literal text, preserves unrelated `.env` lines,
 and never evaluates `.env` as PowerShell. `.env` is ignored by Git; each computer
-keeps its own path. Existing `sc2/start-windows.ps1` commands also use this setup.
+keeps its own path. Existing `scripts/start-windows.ps1` commands also use this setup.
 Help (`--help`) skips the game-path prompt and never launches SC2.
 
 LAN rooms now default to an empty password on both sides. Use the same
@@ -68,7 +68,7 @@ Game data is installed locally and is not part of this repository or a distribut
 - `SC2PATH=/home/nyuny/sc2/StarCraftII`.
 - Engine identity verified by API: `4.10.0.75689`, base `75689`, data
   `B89B5D6FA7CBF6452E721311BFBC6CB2`.
-- Dependency source: `sc2/requirements.in`; complete lock: `sc2/requirements.txt`.
+- Dependency source: `requirements.in`; complete lock: `requirements.txt`.
 - Linux packages: `unzip`, `libosmesa6`; map authoring additionally uses `smpq`.
 - WSLg is present. The bootstrap never initializes a display window.
 
@@ -78,16 +78,16 @@ From the project directory, this opens the human RGB view paused before the
 first simulation step:
 
 ```powershell
-.\sc2\start.ps1
+.\scripts\start.ps1
 ```
 
 Press Pause or Esc in the game view to begin. The same entry point forwards the
 runner's arguments:
 
 ```powershell
-.\sc2\start.ps1 duel --seed 2
-.\sc2\start.ps1 watch --replay 'F:\project\sc2\sc2\runs\RUN_ID\game.SC2Replay'
-.\sc2\start.ps1 --help
+.\scripts\start.ps1 duel --seed 2
+.\scripts\start.ps1 watch --replay 'F:\project\sc2\sc2\runs\RUN_ID\game.SC2Replay'
+.\scripts\start.ps1 --help
 ```
 
 `human` defaults to `--rgb --start-paused`; `watch` defaults to RGB. Replay paths
@@ -106,7 +106,7 @@ Run in Ubuntu after reviewing the official license linked above:
 ```bash
 uv python install 3.10.22
 uv venv --python 3.10.22 ~/.venvs/sc2-arena
-uv pip sync --python ~/.venvs/sc2-arena/bin/python sc2/requirements.txt
+uv pip sync --python ~/.venvs/sc2-arena/bin/python requirements.txt
 mkdir -p ~/.cache/sc2-arena ~/sc2
 curl --fail --location --retry 3 --continue-at - \
   --output ~/.cache/sc2-arena/SC2.4.10.zip \
@@ -131,7 +131,7 @@ Use a new output directory for every run:
 ```bash
 SC2PATH=/home/nyuny/sc2/StarCraftII \
   LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6 LP_NUM_THREADS=4 \
-  /home/nyuny/.venvs/sc2-arena/bin/python sc2/setup/bootstrap.py \
+  /home/nyuny/.venvs/sc2-arena/bin/python scripts/setup/bootstrap.py \
   --osmesa --out /tmp/sc2-bootstrap-NEW
 ```
 

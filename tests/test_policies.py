@@ -7,9 +7,9 @@ from contextlib import redirect_stderr
 from pathlib import Path
 import unittest
 
-from . import agent, lan, run
-from .arena_env import validate_actions
-from .policies import AI_CHOICES, load_policy
+from sc2 import agent, lan, run
+from sc2.arena_env import validate_actions
+from sc2.policies import AI_CHOICES, load_policy
 from .test_agent import arena, observation, unit
 from s2clientprotocol import raw_pb2
 

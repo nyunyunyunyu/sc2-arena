@@ -37,7 +37,7 @@ class WindowsSetupTests(unittest.TestCase):
             "$ErrorActionPreference='Stop';"
             "[Console]::InputEncoding=[Text.UTF8Encoding]::new($false);"
             "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);"
-            f". {ps_string(ROOT/'sc2/setup/config.ps1')};"
+            f". {ps_string(ROOT/'scripts/setup/config.ps1')};"
             f"Initialize-Sc2Path -ProjectRoot {ps_string(self.root)};"
             "Write-Output ('CONFIG=' + $env:SC2PATH)"
         )
@@ -80,15 +80,16 @@ class WindowsSetupTests(unittest.TestCase):
         self.assertEqual((self.root/".env").read_text(encoding="utf-8"), "KEEP=value\n")
 
     def make_launcher(self):
-        (self.root/"sc2/setup").mkdir(parents=True)
-        shutil.copy2(ROOT/"sc2/start-windows.ps1", self.root/"sc2/start-windows.ps1")
+        (self.root/"scripts/setup").mkdir(parents=True)
+        shutil.copy2(ROOT/"scripts/start-windows.ps1", self.root/"scripts/start-windows.ps1")
         shutil.copy2(ROOT/"start.cmd", self.root/"start.cmd")
-        shutil.copy2(ROOT/"sc2/setup/config.ps1", self.root/"sc2/setup/config.ps1")
-        (self.root/"sc2/setup/windows.ps1").write_text("Write-Output 'SETUP-CALLED'\n", encoding="ascii")
+        shutil.copy2(ROOT/"scripts/setup/config.ps1", self.root/"scripts/setup/config.ps1")
+        (self.root/"scripts/setup/windows.ps1").write_text("Write-Output 'SETUP-CALLED'\n", encoding="ascii")
         scripts = self.root/".deps/sc2-win/Scripts"
         scripts.mkdir(parents=True)
         shutil.copy2(sys.executable, scripts/"python.exe")
         shutil.copy2(Path(sys.prefix)/"pyvenv.cfg", scripts.parent/"pyvenv.cfg")
+        (self.root/"sc2").mkdir()
         (self.root/"sc2/__init__.py").write_text("", encoding="ascii")
         stub = "import json, os, sys\nprint('LAUNCHED=' + json.dumps({'module':__spec__.name,'args':sys.argv[1:],'path':os.getenv('SC2PATH')}))\n"
         for module in ("run", "lan"):
@@ -104,7 +105,7 @@ class WindowsSetupTests(unittest.TestCase):
         for arguments, module in cases:
             with self.subTest(arguments=arguments):
                 result = subprocess.run([POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-                    str(self.root/"sc2/start-windows.ps1"), *arguments], cwd=self.temporary.name,
+                    str(self.root/"scripts/start-windows.ps1"), *arguments], cwd=self.temporary.name,
                     input="", encoding="utf-8", errors="replace", capture_output=True, env=self.environment, timeout=60)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("SETUP-CALLED", result.stdout)
@@ -133,7 +134,7 @@ class WindowsSetupTests(unittest.TestCase):
         for arguments, answer, expected, menu in cases:
             with self.subTest(arguments=arguments, answer=answer):
                 result = subprocess.run([POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-                    str(self.root/"sc2/start-windows.ps1"), *arguments], cwd=self.temporary.name,
+                    str(self.root/"scripts/start-windows.ps1"), *arguments], cwd=self.temporary.name,
                     input=answer, encoding="utf-8", errors="replace", capture_output=True,
                     env=self.environment, timeout=30)
                 self.assertEqual(result.returncode, 0, result.stderr)

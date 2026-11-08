@@ -1,4 +1,4 @@
-"""Small offline checks: python -m unittest sc2.test_runtime."""
+"""Small offline checks: python -m unittest tests.test_runtime."""
 import base64
 import gzip
 import io
@@ -13,11 +13,11 @@ from unittest.mock import Mock, patch
 
 from s2clientprotocol import raw_pb2 as raw_pb
 from s2clientprotocol import sc2api_pb2 as sc_pb
-from .arena_env import ArenaRenderer, arena_hud, interface_options, load_map, projected_ring, validate_actions
-from .record import GameRecord, actual_results, sha256
-from .policies import load_policy
-from .run import arena_for_map, arena_for_replay, arguments, play, replay_map_data, save_rgb_frame, watch
-from .windows_env import set_client_window, window_options
+from sc2.arena_env import ArenaRenderer, arena_hud, interface_options, load_map, projected_ring, validate_actions
+from sc2.record import GameRecord, actual_results, sha256
+from sc2.policies import load_policy
+from sc2.run import arena_for_map, arena_for_replay, arguments, play, replay_map_data, save_rgb_frame, watch
+from sc2.windows_env import set_client_window, window_options
 
 
 def observation():
@@ -288,6 +288,44 @@ class RuntimeTest(unittest.TestCase):
                     watch(args)
                 self.assertEqual(len(launches), 2)  # Reject before starting another engine.
                 self.assertEqual(len(requests), 2)
+
+    def test_watch_resolves_archived_maps_and_keeps_explicit_paths_and_hash_checks(self):
+        replay, map_data = b"replay-fixture", b"recorded-map-fixture"
+        requests = []
+        info = sc_pb.ResponseReplayInfo(base_build=75689, data_version="recorded-data")
+        info.player_info.add().player_info.player_id = 42
+        controller = SimpleNamespace(replay_info=lambda data: info,
+            ping=lambda: sc_pb.ResponsePing(base_build=75689, data_version="recorded-data"),
+            start_replay=requests.append)
+        start = Mock(side_effect=lambda **kwargs: nullcontext(controller))
+        view = SimpleNamespace(run=lambda *a, **kw: None, close=lambda: None)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            replay_path = root / "game.SC2Replay"
+            replay_path.write_bytes(replay)
+            map_path = root / "maps/old.SC2Map"
+            map_path.parent.mkdir()
+            map_path.write_bytes(map_data)
+            manifest = {"replay_sha256": sha256(replay), "map_sha256": sha256(map_data),
+                        "arena_map_sha256": sha256(map_data), "arena": {"map_file": "maps/old.SC2Map"}}
+            (root / "manifest.json").write_text(json.dumps(manifest))
+            args = arguments(["watch", "--replay", str(replay_path), "--rules", str(root / "rules.json")])
+            with patch("pysc2.run_configs.get", return_value=SimpleNamespace(start=start)), \
+                    patch("sc2.arena_env.ArenaRenderer", return_value=view):
+                self.assertEqual(watch(args), 0)
+                archived = root / "legacy/maps/old.SC2Map"
+                archived.parent.mkdir(parents=True)
+                map_path.rename(archived)
+                self.assertEqual(watch(args), 0)
+                self.assertEqual([r.map_data for r in requests], [map_data, map_data])
+                args.map = str(map_path)
+                with self.assertRaises(FileNotFoundError):
+                    watch(args)
+                args.map = None
+                archived.write_bytes(b"tampered-map")
+                with self.assertRaisesRegex(ValueError, "map SHA256"):
+                    watch(args)
+                self.assertEqual(start.call_count, 2)
 
     def test_replay_map_bytes_reject_manifest_for_a_different_replay(self):
         with tempfile.TemporaryDirectory() as temporary:

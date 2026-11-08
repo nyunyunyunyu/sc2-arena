@@ -14,8 +14,8 @@ from unittest.mock import Mock, patch
 
 from s2clientprotocol import common_pb2, data_pb2, sc2api_pb2 as sc_pb
 
-from . import lan
-from .record import proto_dict, sha256
+from sc2 import lan
+from sc2.record import proto_dict, sha256
 
 
 @contextlib.contextmanager

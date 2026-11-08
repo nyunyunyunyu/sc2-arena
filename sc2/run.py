@@ -109,6 +109,8 @@ def watch(args):
     map_data = None
     if arena is not None:
         map_path = Path(args.map) if args.map else args.rules.parent / arena["map_file"]
+        if not args.map and not map_path.is_file():
+            map_path = args.rules.parent / "legacy" / arena["map_file"]
         map_data = replay_map_data(args.replay, replay_data, map_path)
     elif args.map:
         raise ValueError("An explicit replay map requires a matching recorded arena manifest")

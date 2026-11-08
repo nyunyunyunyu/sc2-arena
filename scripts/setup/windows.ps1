@@ -23,5 +23,5 @@ if (-not (Test-Path -LiteralPath (Join-Path $environment 'Scripts/python.exe')))
     & $uv venv $environment --python 3.10 --managed-python
     if ($LASTEXITCODE -ne 0) { throw 'Could not create isolated Python 3.10 environment.' }
 }
-& $uv pip install --python (Join-Path $environment 'Scripts/python.exe') -r (Join-Path $projectRoot 'sc2/requirements.txt')
+& $uv pip install --python (Join-Path $environment 'Scripts/python.exe') -r (Join-Path $projectRoot 'requirements.txt')
 if ($LASTEXITCODE -ne 0) { throw 'Could not install the pinned SC2 dependencies.' }

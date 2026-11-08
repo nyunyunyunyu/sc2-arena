@@ -37,8 +37,23 @@ A/B 是决赛冻结版的原样副本，双方属性和正常视野规则不变�
 
 `--no-window` 不用于真人控制。单机人机本来就自动隐藏 AI 端；`duel` 默认也隐藏两个 AI 端。Windows 使用隐藏图形客户端的方式，加载时可能短暂出现窗口，仍有图形开销。
 
-两台电脑联机及双方独立选择真人/AI，见 [联机说明](sc2/LAN.md)。
+两台电脑联机及双方独立选择真人/AI，见 [联机说明](docs/lan.md)。
 
-详细玩法、兵种属性、测试与 Linux 入口见 [sc2/README.md](sc2/README.md)，地图构建见 [sc2/maps/README.md](sc2/maps/README.md)。
+详细玩法、兵种属性、测试与 Linux 入口见 [玩法与记录约定](docs/gameplay.md)，地图构建见 [sc2/maps/README.md](sc2/maps/README.md)。
 
 Python 包保留在 `sc2/`，从仓库根目录运行 `python -m sc2.run`。本机依赖、对局记录和历史工作记录分别位于 `.deps/`、`sc2/runs/` 和 `.retro/`，均不纳入 Git。历史证据中的原始绝对路径保留，以免改变已记录的哈希。
+
+## 目录与开发
+
+```text
+sc2/          运行代码、当前规则、地图源码和 AI 策略
+  legacy/     旧地图与规则，仅供历史复现和回放
+tests/        离线回归测试
+scripts/      Windows / WSL 启动器与环境安装脚本
+docs/         玩法、联机、安装、开发说明
+  history/    历史验收记录
+requirements.in / requirements.txt   依赖声明与锁定版本
+start.cmd     Windows 双击入口
+```
+
+测试与旧路径迁移见 [开发说明](docs/development.md)，环境配置见 [安装说明](docs/setup.md)。

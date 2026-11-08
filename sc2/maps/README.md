@@ -14,10 +14,10 @@ come from `../rules.json`; `build.py` writes the corresponding `src/ArenaRules.g
 The map creates exactly one Zealot, Zergling and Marine per player. It never calls
 the melee initialization, built-in computer AI or melee victory functions.
 
-Both the original Terran-only `ThreeSoldiersRing.SC2Map` and native mixed-melee
-`ThreeSoldiersMeleeRing.SC2Map` are preserved byte-for-byte. Their configurations
-are `../rules-terran.json` and `../rules-melee-native.json`, so old replay map bindings
-still resolve. The new default has no armor, shields, regeneration or special abilities.
+Historical maps are preserved byte-for-byte under `../legacy/maps/`, with the
+Terran and native-melee rules in `../legacy/`. Replay loading searches this archive
+when an old map is absent from the active directory; recorded hashes are still checked.
+See [legacy assets](../legacy/README.md). The new default has no armor, shields, regeneration or special abilities.
 Hazard damage still subtracts life directly.
 
 `rules.json.combat` is the source for generated `ArenaCombat.xml` and localized unit
@@ -113,4 +113,4 @@ Both probes select hidden Windows clients on Windows and Linux 4.10 otherwise.
 `python -m sc2.maps.render_probe --rings --output <new-dir>` captures the first
 shrink in real OSMesa RGB, checks neutral/native counts and fog, then removes one
 team diagnostically and requires the map to emit the correct `player_result`.
-The OSMesa library and environment setup are documented in `../setup/README.md`.
+The OSMesa library and environment setup are documented in [environment setup](../../docs/setup.md).
