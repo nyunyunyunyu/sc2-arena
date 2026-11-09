@@ -1,7 +1,7 @@
 # 玩法与记录约定
 
 从仓库根目录双击 `start.cmd`，或运行 `.\start.cmd human --ai a2`。
-未指定 AI 时可选 `default`、`a`、`b`、`a2`、`a3`、`a4`；直接 Enter 使用 `default`。
+未指定 AI 时可选 `default`、`a`、`b`、`a2`、`a3`、`a4`、`a5`、`a6`；A5 为试用版，菜单使用 `7` / `a5`。独立 A6 使用 `8` / `a6`，A5 保留原样。直接 Enter 使用 `default`。
 完整启动选项见 [首页](../README.md)，联机步骤见 [联机说明](lan.md)。
 
 ## 当前规则
@@ -56,7 +56,7 @@ manifest 记录引擎、地图、策略、规则哈希及真实玩家编号；�
 Windows 5.x 和 Linux 4.10 的结果分开统计；旧录像不能用不同版本的引擎替代回放。
 
 未知、超时和退出不算败局。双 AI、固定 hold、合成测试和无人操作的真人槽位诊断，
-均不能当作真人战绩。A/B 的 Linux 决赛、A2/A3 的 AI 回归结果见
+均不能当作真人战绩。A/B 的 Linux 决赛、A2～A6 的 AI 回归结果见
 [策略说明](../sc2/policies/README.md)，历史实机验收见 [历史记录](history/acceptance.md)。
 
 ## Linux / PyGame

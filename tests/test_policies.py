@@ -18,7 +18,9 @@ class PolicySelectionTests(unittest.TestCase):
     def test_finalists_are_exact_frozen_sources_and_default_is_unchanged(self):
         self.assertIs(load_policy("default"), agent)
         expected = {"a": "efd0a00a2402706529e92635cf379bec99c544f5166262899fddc3aa4ce9cda9",
-                    "b": "dff90014ee400c19974dc2d2f85f524c541c9c6d8748d815a08892d7c0c298c8"}
+                    "b": "dff90014ee400c19974dc2d2f85f524c541c9c6d8748d815a08892d7c0c298c8",
+                    "a5": "4dbe4f7cd09176e4d7bf049be0339bfb0a781d7c6ac1ac43bc8110991e813581",
+                    "a6": "b3dcc78c589d3cee62f20e2d57d4f466e66bacf24865c347c4c40dfaeda07f91"}
         for name, digest in expected.items():
             policy = load_policy(name)
             self.assertEqual(hashlib.sha256(Path(policy.__file__).read_bytes()).hexdigest(), digest)

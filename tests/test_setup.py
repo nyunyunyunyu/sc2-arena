@@ -123,7 +123,11 @@ class WindowsSetupTests(unittest.TestCase):
 
     def test_ai_menu_and_explicit_flags(self):
         self.make_launcher()
-        cases = [([], "6\n", "a4", True), (["human", "--ai", "a4"], "", "a4", False),
+        cases = [([], "8\n", "a6", True), ([], "a6\n", "a6", True),
+                 (["human", "--ai", "a6"], "", "a6", False),
+                 ([], "7\n", "a5", True), ([], "a5\n", "a5", True),
+                 (["human", "--ai", "a5"], "", "a5", False),
+                 ([], "6\n", "a4", True), (["human", "--ai", "a4"], "", "a4", False),
                  ([], "5\n", "a3", True), (["human", "--ai", "a3"], "", "a3", False),
                  ([], "4\n", "a2", True), (["human", "--ai", "a2"], "", "a2", False),
                  ([], "2\n", "a", True), ([], "invalid\n3\n", "b", True),

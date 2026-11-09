@@ -314,7 +314,7 @@ class LanTests(unittest.TestCase):
     def test_selected_ai_runs_and_records_identity_across_lan_rounds(self):
         with tempfile.TemporaryDirectory() as temporary:
             for role in ("host", "join"):
-                for name in ("a", "b", "a2", "a3", "a4"):
+                for name in ("a", "b", "a2", "a3", "a4", "a5", "a6"):
                     directory = Path(temporary) / (role + name)
                     with patch.object(lan.agent, "decide", side_effect=AssertionError("Wrong AI selected")):
                         result, manifest, controller, decide, _ = self.fake_play(

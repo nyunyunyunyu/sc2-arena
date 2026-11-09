@@ -49,7 +49,7 @@ def arguments(argv=None):
     parser.add_argument("--start-paused", action="store_true",
                         help="Wait for Enter before native client launch, or Pause/Esc in PyGame")
     parser.add_argument("--ai", type=str.lower, choices=AI_CHOICES, default="default",
-                        help="AI opponent in human mode; both policy slots in duel (a: finals champion, b: finalist, a2: human-match revision, a3: ranged endgame revision, a4: retreat and rescue revision)")
+                        help="AI opponent in human mode; both policy slots in duel (a: finals champion, b: finalist, a2: human-match revision, a3: ranged endgame revision, a4: retreat and rescue revision, a5: trial policy, 22/24 regression wins, a6: validated revision, 24/24 plus 4/4 vs A5)")
     parser.add_argument("--opponent", choices=("policy", "hold"), default="policy")
     parser.add_argument("--output", type=Path, help="New evidence directory; never overwritten")
     parser.add_argument("--replay", type=Path, help="Replay for watch mode")
