@@ -1,5 +1,5 @@
 ﻿function Initialize-Sc2Path {
-    param([Parameter(Mandatory=$true)][string]$ProjectRoot)
+    param([Parameter(Mandatory=$true)][string]$ProjectRoot, [switch]$Graphical)
     $envFile = Join-Path $ProjectRoot '.env'
     $lines = @()
     if (Test-Path -LiteralPath $envFile) { $lines = @(Get-Content -LiteralPath $envFile -Encoding UTF8) }
@@ -11,7 +11,16 @@
     }
     while ($true) {
         if ([string]::IsNullOrWhiteSpace($candidate)) {
-            $candidate = Read-Host '请输入 StarCraft II 安装目录（包含 SC2Data 和 Versions 的文件夹）'
+            if ($Graphical) {
+                Add-Type -AssemblyName System.Windows.Forms
+                $picker = [System.Windows.Forms.FolderBrowserDialog]::new()
+                $picker.Description = '请选择 StarCraft II 安装目录（包含 SC2Data 和 Versions）'
+                $picker.ShowNewFolderButton = $false
+                try {
+                    if ($picker.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { throw '启动已取消。' }
+                    $candidate = $picker.SelectedPath
+                } finally { $picker.Dispose() }
+            } else { $candidate = Read-Host '请输入 StarCraft II 安装目录（包含 SC2Data 和 Versions 的文件夹）' }
             if ([string]::IsNullOrWhiteSpace($candidate)) { throw '未提供 SC2 路径，启动已取消。' }
         }
         $candidate = $candidate.Trim()
@@ -30,7 +39,10 @@
             }
         } catch { $engine = @() }
         if ($engine.Count -gt 0) { break }
-        Write-Host '这个目录不是有效的 Windows SC2 安装目录，请重新输入。'
+        if ($Graphical) {
+            Add-Type -AssemblyName System.Windows.Forms
+            [System.Windows.Forms.MessageBox]::Show('这个目录不是有效的 Windows SC2 安装目录，请重新选择。', '游戏目录无效') | Out-Null
+        } else { Write-Host '这个目录不是有效的 Windows SC2 安装目录，请重新输入。' }
         $candidate = $null
     }
     $env:SC2PATH = (Resolve-Path -LiteralPath $candidate).ProviderPath

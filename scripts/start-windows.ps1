@@ -1,16 +1,37 @@
-# Native Windows play, replay, or one participant in a LAN room.
+﻿# Native Windows play, replay, or one participant in a LAN room.
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $launchArguments = @($args)
-if ('--help' -notin $launchArguments -and '-h' -notin $launchArguments) {
-    . (Join-Path $PSScriptRoot 'setup/config.ps1')
-    Initialize-Sc2Path -ProjectRoot $projectRoot
+$lobby = $launchArguments.Count -gt 0 -and $launchArguments[0] -eq 'lobby'
+$guiLobby = $lobby -and '--help' -notin $launchArguments -and '-h' -notin $launchArguments
+try {
+    if ('--help' -notin $launchArguments -and '-h' -notin $launchArguments) {
+        . (Join-Path $PSScriptRoot 'setup/config.ps1')
+        Initialize-Sc2Path -ProjectRoot $projectRoot -Graphical:$guiLobby
+    }
+    if ($guiLobby) {
+        $logDirectory = Join-Path $projectRoot 'sc2/runs'
+        New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
+        $setupError = Join-Path $logDirectory 'lobby-setup-error.log'
+        # Windows PowerShell treats redirected native stderr as an error; capture it at process level.
+        $setup = Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
+            -ArgumentList @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
+                ('"' + (Join-Path $PSScriptRoot 'setup/windows.ps1') + '"')) `
+            -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput (Join-Path $logDirectory 'lobby-setup.log') `
+            -RedirectStandardError $setupError
+        if ($setup.ExitCode -ne 0) { throw (Get-Content -LiteralPath $setupError -Raw) }
+    } else { & (Join-Path $PSScriptRoot 'setup/windows.ps1') }
+} catch {
+    if (-not $guiLobby) { throw }
+    Add-Type -AssemblyName System.Windows.Forms
+    [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, '联机大厅启动失败') | Out-Null
+    exit 1
 }
-& (Join-Path $PSScriptRoot 'setup/windows.ps1')
-$python = Join-Path $projectRoot '.deps/sc2-win/Scripts/python.exe'
+$python = Join-Path $projectRoot $(if ($guiLobby) { '.deps/sc2-win/Scripts/pythonw.exe' } else { '.deps/sc2-win/Scripts/python.exe' })
 $forward = [System.Collections.Generic.List[string]]::new()
 if ($launchArguments.Count -eq 0 -or ([string]$launchArguments[0]).StartsWith('-')) { $forward.Add('human') }
 foreach ($argument in $launchArguments) { $forward.Add([string]$argument) }
+if ($lobby) { $forward.RemoveAt(0) }
 # An explicit --ai skips the selection menu.
 $hasAi = '--ai' -in $forward -or ($forward | Where-Object { $_.StartsWith('--ai=') })
 $localAi = '--control=ai' -in $forward
@@ -54,7 +75,17 @@ for ($i = 0; $i -lt $forward.Count; $i++) {
 }
 $env:PYTHONUTF8 = '1'
 Push-Location $projectRoot
-$module = if ($forward[0] -in @('host', 'join')) { 'sc2.lan' } else { 'sc2.run' }
-try { & $python -m $module @forward; $result = $LASTEXITCODE }
+$module = if ($lobby) { 'sc2.lan_ui' } elseif ($forward[0] -in @('host', 'join')) { 'sc2.lan' } else { 'sc2.run' }
+try {
+    if ($guiLobby) {
+        # A pipeline makes PowerShell wait for GUI executables and collect their exit code.
+        & $python -m $module @forward | Out-Host
+    } else { & $python -m $module @forward }
+    $result = $LASTEXITCODE
+}
 finally { Pop-Location }
+if ($guiLobby -and $result -ne 0) {
+    Add-Type -AssemblyName System.Windows.Forms
+    [System.Windows.Forms.MessageBox]::Show('大厅未能启动，请查看 sc2/runs/lobby-ui.log。', '联机大厅启动失败') | Out-Null
+}
 exit $result

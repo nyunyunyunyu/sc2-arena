@@ -12,6 +12,7 @@ int arenaHud;
 int arenaReadyDialog;
 int arenaReadyLabel;
 bool arenaFinished = false;
+bool arenaSpeedSet = false;
 
 void UpdateRings () {
     int ring = 0;
@@ -137,6 +138,23 @@ bool WideCamera (bool testConds, bool runActions) {
     return true;
 }
 
+bool SetLanSpeed (bool testConds, bool runActions) {
+    int speed;
+    string command;
+    if (!runActions || arenaSpeedSet || arenaReadyTicks >= arenaReadyLoops) { return true; }
+    command = EventChatMessage(false);
+    if (command == "LAN speed: 0") { speed = c_gameSpeedSlower; }
+    else if (command == "LAN speed: 1") { speed = c_gameSpeedSlow; }
+    else if (command == "LAN speed: 2") { speed = c_gameSpeedNormal; }
+    else if (command == "LAN speed: 3") { speed = c_gameSpeedFast; }
+    else { return true; }
+    GameSetSpeedValueMinimum(c_gameSpeedSlower);
+    GameSetSpeedValue(speed);
+    GameSetSpeedLocked(true);
+    arenaSpeedSet = true;
+    return true;
+}
+
 bool ArenaInit (bool testConds, bool runActions) {
     int i = 0;
     int player;
@@ -233,6 +251,8 @@ bool ArenaInit (bool testConds, bool runActions) {
     CameraSetValue(2, c_cameraValueDistance, 30.0, 0.0, -1.0, 10.0);
     tick = TriggerCreate("WideCamera");
     TriggerAddEventChatMessage(tick, c_playerAny, "AI: overview camera", true);
+    tick = TriggerCreate("SetLanSpeed");
+    TriggerAddEventChatMessage(tick, c_playerAny, "LAN speed: ", false);
     tick = TriggerCreate("ArenaTick");
     TriggerAddEventTimePeriodic(tick, 0.0625, c_timeGame);
     return true;

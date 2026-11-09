@@ -22,9 +22,13 @@ from . import agent
 from .policies import AI_CHOICES, load_policy
 from .arena_env import interface_options, validate_actions
 from .record import GameRecord, actual_results, proto_dict, replay_speed, sha256
+from .lan_transport import GameRelay
 
 MAX_MESSAGE = 65536
 ENGINE_FIELDS = ("game_version", "base_build", "data_version", "data_build")
+# Native labels round the engine's 3/7, 4/7, 5/7 and 6/7 realtime rates.
+NATIVE_SPEEDS = {0.43: 0, 0.57: 1, 0.71: 2, 0.86: 3, 1: 4}
+SPEEDS = (0.43, 0.57, 0.71, 0.86, 1, 0.25, 0.5, 0.75, 1.5, 2)
 
 
 class PeerDisconnected(ConnectionError):
@@ -199,10 +203,16 @@ def open_room(args):
 
 
 def check_hello(local, peer):
-    if peer.get("kind") != "hello" or peer.get("protocol") != 2:
+    if peer.get("kind") != "hello" or peer.get("protocol") != 4:
         raise ValueError("Incompatible room protocol")
     if peer.get("control") not in ("human", "ai"):
         raise ValueError("Invalid player control")
+    speed = peer.get("speed")
+    if local["speed"] is None:
+        if type(speed) not in (int, float) or speed not in SPEEDS:
+            raise ValueError("Invalid host game speed")
+    elif speed is not None:
+        raise ValueError("Only the host chooses the game speed")
     for key in ("engine", "map_sha256", "rules_sha256"):
         if peer.get(key) != local[key]:
             raise ValueError(f"双方 {key} 不一致，请使用相同游戏版本、地图和规则")
@@ -217,7 +227,7 @@ def join_request(host_ip, port, control, role):
     options.raw_affects_selection = False
     # SC2 may assign duplicate player names to the same slot.
     request = sc_pb.RequestJoinGame(
-        race=common_pb2.Terran, options=options, player_name=f"{role}-{control}", host_ip=host_ip,
+        race=common_pb2.Terran, options=options, player_name=f"{role}-{control}", host_ip=host_ip, shared_port=0,
         server_ports=sc_pb.PortSet(game_port=port + 1, base_port=port + 2),
         client_ports=[sc_pb.PortSet(game_port=port + 3, base_port=port + 4)])
     return request
@@ -260,6 +270,10 @@ def arguments(argv=None):
     parser.add_argument("--rules", type=Path, default=Path(__file__).with_name("rules.json"))
     parser.add_argument("--output", type=Path)
     parser.add_argument("--rounds", type=int, help="Host only: number of consecutive games (default 1)")
+    parser.add_argument("--speed", type=float, choices=SPEEDS,
+                        help="Host only: 0.43/0.57/0.71/0.86 are approximate native smooth speeds; other non-1 values use stepping")
+    parser.add_argument("--sound", action=argparse.BooleanOptionalAction, default=False,
+                        help="Enable local Windows game sound and music (default off; lobby defaults on)")
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--max-game-loops", type=int, default=12000, help="Watchdog only; never a win")
     display = parser.add_mutually_exclusive_group()
@@ -273,6 +287,10 @@ def arguments(argv=None):
         parser.error("--rounds is host-only and must be between 1 and 1000")
     if args.mode == "host" and args.rounds is None:
         args.rounds = 1
+    if args.mode == "join" and args.speed is not None:
+        parser.error("--speed is host-only; the joiner follows the host")
+    if args.mode == "host" and args.speed is None:
+        args.speed = 1
     if not 1024 <= args.port <= 65531 or not 1 <= args.timeout <= 600 or args.max_game_loops <= 0:
         parser.error("Invalid port, timeout or loop limit")
     if args.mode == "join" and not args.address:
@@ -292,6 +310,8 @@ def arguments(argv=None):
         parser.error("--no-window requires --control ai; human control needs a game window")
     if args.windowed and sys.platform != "win32":
         parser.error("--windowed requires Windows")
+    if args.sound and sys.platform != "win32":
+        parser.error("--sound requires the Windows client; Linux clients have no audio output")
     if sys.platform != "win32" and not (args.hidden or args.no_window):
         parser.error("Visible LAN play currently requires Windows; AI may use --no-window")
     if sys.platform != "win32" and args.control == "human":
@@ -311,7 +331,7 @@ def play_round(args, room, process, record, rules, map_name, host_ip, number, po
     try:
         if host:
             create = sc_pb.RequestCreateGame(
-                local_map=sc_pb.LocalMap(map_path=map_name), realtime=True, disable_fog=False, random_seed=1)
+                local_map=sc_pb.LocalMap(map_path=map_name), realtime=args.speed in NATIVE_SPEEDS, disable_fog=False, random_seed=1)
             create.player_setup.add(type=sc_pb.Participant)
             create.player_setup.add(type=sc_pb.Participant)
             controller.create_game(create)
@@ -320,6 +340,8 @@ def play_round(args, room, process, record, rules, map_name, host_ip, number, po
             room.wait_stage("join", number)
         response = controller.join_game(join_request(host_ip, args.port, args.control, args.mode))
         joined = True
+        if host and args.speed in NATIVE_SPEEDS and args.speed != 1:
+            controller.chat(f"LAN speed: {NATIVE_SPEEDS[args.speed]}")
         if args.control == "ai":
             controller.chat("AI: overview camera")
         player_id = response.player_id
@@ -345,6 +367,7 @@ def play_round(args, room, process, record, rules, map_name, host_ip, number, po
         record.write_manifest()
         print(f"第 {number}/{record.manifest['rounds']} 局已加载，地图倒计时后开战。结束后自动保存录像。", flush=True)
         memory, next_loop, last_loop = {}, 0, -1
+        next_frame = time.monotonic()
         while True:
             started = time.monotonic()
             room.poll()
@@ -373,8 +396,16 @@ def play_round(args, room, process, record, rules, map_name, host_ip, number, po
                         if rejected:
                             record.event("action_rejected", codes=rejected, game_loop=loop)
                 last_loop = loop
-            # Realtime simulation never waits for this observation/policy sampler.
-            time.sleep(max(0, policy.CADENCE / 22.4 - (time.monotonic() - started)))
+            if args.speed in NATIVE_SPEEDS:
+                # Realtime simulation never waits for this observation/policy sampler.
+                rate = 9.6 + 3.2 * NATIVE_SPEEDS[args.speed]
+                time.sleep(max(0, policy.CADENCE / rate - (time.monotonic() - started)))
+            else:
+                # SC2 waits for both clients; only the host paces the shared simulation.
+                controller.step(1)
+                if host:
+                    next_frame = max(next_frame + 1 / (22.4 * args.speed), started)
+                    time.sleep(max(0, next_frame - time.monotonic()))
     except KeyboardInterrupt:
         status, failure = "interrupted", "Local user interrupted"
     except (OSError, PeerDisconnected) as exc:
@@ -443,7 +474,7 @@ def play_round(args, room, process, record, rules, map_name, host_ip, number, po
     return status
 
 
-def play(args):
+def play(args, room=None):
     policy = load_policy(args.ai)
     visible = not (args.hidden or args.no_window)
     host = args.mode == "host"
@@ -456,27 +487,31 @@ def play(args):
     if output.exists():
         raise FileExistsError(output)
     metadata = dict(mode="lan", connection_role=args.mode,
-        local_control=args.control, hidden=args.hidden, no_window=args.no_window, windowed=args.windowed,
+        local_control=args.control, hidden=args.hidden, no_window=args.no_window, windowed=args.windowed, sound=args.sound,
         source="real_engine_diagnostic" if args.hidden else "real_engine",
-        runner_sha256=sha256(Path(__file__).read_bytes()), realtime=True, step_mul=policy.CADENCE,
+        runner_sha256=sha256(Path(__file__).read_bytes()), step_mul=policy.CADENCE,
         map_sha256=sha256(map_bytes), arena_map_sha256=sha256(map_bytes), rules_sha256=sha256(rules_bytes),
         policy_name=args.ai, policy_sha256=sha256(Path(policy.__file__).read_bytes()), selected_map=str(map_path),
         requested_version=args.version, observations_scope="local player only")
-    room = process = None
+    process = relay = None
     status, failure, completed = "error", None, []
     count = args.rounds
     if args.control == "ai":
         print(f"AI: {args.ai}", flush=True)
     try:
-        if not args.yes:
-            input(f"本方选择 {args.control}。准备好后按 Enter；每局加载后有 5 秒准备时间。")
-        room = open_room(args)
+        if room is None:
+            if not args.yes:
+                input(f"本方选择 {args.control}。准备好后按 Enter；每局加载后有 5 秒准备时间。")
+            room = open_room(args)
         if not flags.FLAGS.is_parsed():
             flags.FLAGS(["sc2_lan"])
         options = {}
         if sys.platform == "win32":
             from .windows_env import set_client_window, window_options
             options = window_options(visible, windowed=args.windowed)
+            options["extra_args"].extend([f"-sound={'true' if args.sound else 'false'}",
+                                          f"-music={'true' if args.sound else 'false'}",
+                                          f"-soundglobal={'true' if args.sound else 'false'}"])
         config = run_configs.get(version=args.version)
         process = config.start(want_rgb=False, host="127.0.0.1",
             extra_ports=list(range(args.port + 1, args.port + 5)),
@@ -486,11 +521,18 @@ def play(args):
             set_client_window(process.pid)
         ping = proto_dict(controller.ping())
         engine = {key: ping[key] for key in ENGINE_FIELDS}
-        hello = dict(kind="hello", protocol=2, control=args.control, engine=engine, rounds=args.rounds,
+        hello = dict(kind="hello", protocol=4, control=args.control, engine=engine, rounds=args.rounds, speed=args.speed,
                      **{k: metadata[k] for k in ("map_sha256", "rules_sha256", "policy_sha256")})
         room.send(hello)
         peer = room.receive("hello")
         check_hello(hello, peer)
+        local_ip, peer_ip = room.socket.getsockname()[0], room.socket.getpeername()[0]
+        if local_ip != peer_ip:
+            # Native SC2 ports expect a loopback peer; forward only game traffic, never the API.
+            relay = GameRelay(local_ip, peer_ip, args.port, host)
+            room.barrier("transport_ready", 0)
+        metadata.update(game_transport="forwarded" if relay else "local",
+                        local_address=local_ip, peer_address=peer_ip)
         if host:
             if peer.get("rounds") is not None:
                 raise ValueError("Only the host chooses the round count")
@@ -498,12 +540,17 @@ def play(args):
             count = peer.get("rounds")
             if type(count) is not int or not 1 <= count <= 1000:
                 raise ValueError("Invalid host round count")
+            args.speed = peer["speed"]
         metadata.update(room_id=room.session_id, rounds=count, client_pid=process.pid,
+                        realtime=args.speed in NATIVE_SPEEDS, requested_speed=args.speed,
+                        native_speed=NATIVE_SPEEDS.get(args.speed),
+                        environment_step_mul=policy.CADENCE if args.speed in NATIVE_SPEEDS else 1,
+                        pacing_game_loops_per_wall_second=22.4 * args.speed if args.speed not in NATIVE_SPEEDS else None,
                         peer_control=peer["control"], peer_policy_sha256=peer["policy_sha256"],
                         engine=[engine, peer["engine"]])
-        print(f"已连接：本方 {args.control}，对方 {peer['control']}，共 {count} 局。", flush=True)
+        print(f"已连接：本方 {args.control}，对方 {peer['control']}，共 {count} 局，速度 {args.speed:g}x。", flush=True)
         map_name = "sc2arena/" + map_path.name
-        host_ip = room.socket.getsockname()[0] if host else room.socket.getpeername()[0]
+        host_ip = "127.0.0.1" if relay else local_ip
         # Same-machine clients share SC2's map cache; serialize writes before either opens it.
         if host:
             controller.save_map(map_name, map_bytes)
@@ -544,9 +591,15 @@ def play(args):
                 failure = (failure or "") + " Close failed: " + repr(exc)
                 process._controller = None
                 process.close()
+            finally:
+                if relay:
+                    relay.close()
+        elif relay:
+            relay.close()
         output.mkdir(parents=True, exist_ok=True)
         (output / "series.json").write_text(json.dumps(dict(status=status, rounds=count,
-            games=completed, error=failure, client_pid=process.pid if process else None),
+            games=completed, error=failure, client_pid=process.pid if process else None,
+            transport_error=relay.error if relay else None),
             indent=2, ensure_ascii=False), encoding="utf-8")
     return 0 if status == "complete" else 2
 

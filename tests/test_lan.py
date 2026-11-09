@@ -32,8 +32,8 @@ def rooms():
         b.close()
 
 
-def hello(control="human"):
-    return dict(kind="hello", protocol=2, control=control,
+def hello(control="human", speed=1):
+    return dict(kind="hello", protocol=4, control=control, speed=speed,
         engine=dict(game_version="5.0.test", base_build=123, data_version="abc", data_build=123),
         map_sha256="a"*64, rules_sha256="b"*64, policy_sha256="c"*64)
 
@@ -128,9 +128,9 @@ class LanTests(unittest.TestCase):
     def test_compatibility_and_all_control_combinations(self):
         for local in ("human", "ai"):
             for peer in ("human", "ai"):
-                lan.check_hello(hello(local), hello(peer))
+                lan.check_hello(hello(local), hello(peer, speed=None))
         for field in ("protocol", "engine", "map_sha256", "rules_sha256", "control", "policy_sha256"):
-            value = hello()
+            value = hello(speed=None)
             value[field] = None
             with self.assertRaises(ValueError, msg=field):
                 lan.check_hello(hello(), value)
@@ -141,6 +141,7 @@ class LanTests(unittest.TestCase):
         self.assertEqual(request.player_name, "host-human")
         self.assertNotEqual(request.player_name, lan.join_request("192.168.1.9", 14380, "human", "join").player_name)
         self.assertEqual(request.race, common_pb2.Terran)
+        self.assertEqual(request.shared_port, 0)
         self.assertEqual(request.server_ports.game_port, 14381)
         self.assertEqual(request.client_ports[0].base_port, 14384)
         self.assertFalse(request.options.raw_affects_selection)
@@ -219,11 +220,13 @@ class LanTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "non-owned"):
             lan.local_actions("ai", obs, {}, {}, 0, policy)
 
-    def fake_play(self, control, peer_control, directory, disconnect=False, watchdog=False, role="host", bad_replay=False, display=None, rounds=1, ai="default"):
+    def fake_play(self, control, peer_control, directory, disconnect=False, watchdog=False, role="host", bad_replay=False, display=None, rounds=1, ai="default", existing_room=False, speed=1, sound=False, remote=False):
         args = lan.arguments([role, "--address", "127.0.0.1", "--control", control, "--yes",
-                              *(display if display is not None else ["--hidden"]), "--output", str(directory), "--ai", ai])
+                              *(display if display is not None else ["--hidden"]), "--output", str(directory), "--ai", ai,
+                              *(["--speed", str(speed)] if role == "host" else [])])
         if role == "host":
             args.rounds = rounds
+        args.sound = sound
         if watchdog:
             args.max_game_loops = 4
         rules = json.loads(args.rules.read_text(encoding="utf-8-sig"))
@@ -231,14 +234,14 @@ class LanTests(unittest.TestCase):
         unit_data = {str(k): proto_dict(v) for k, v in units.items()}
         encoded = json.dumps(unit_data, sort_keys=True).encode()
         identity = hello()["engine"]
-        peer = hello(peer_control)
+        peer = hello(peer_control, speed=None if role == "host" else speed)
         peer["rounds"] = rounds if role == "join" else None
         peer.update(engine=identity,
             map_sha256=sha256((args.rules.parent/rules["map_file"]).read_bytes()),
             rules_sha256=sha256(args.rules.read_bytes()))
         room = Mock(session_id="session-1")
         room.socket.getsockname.return_value = ("127.0.0.1", 14380)
-        room.socket.getpeername.return_value = ("127.0.0.1", 44444)
+        room.socket.getpeername.return_value = ("192.168.1.2" if remote else "127.0.0.1", 44444)
         room.receive.side_effect = [peer, dict(kind="map_saved")]
         room.wait_stage.side_effect = sum((
             ([dict(kind="join", round=n)] if role == "join" else []) +
@@ -260,30 +263,82 @@ class LanTests(unittest.TestCase):
         action = sc_pb.Action()
         action.action_raw.unit_command.ability_id = 4
         action.action_raw.unit_command.unit_tags.append(123)
-        with patch.object(lan, "open_room", return_value=room), \
+        with patch.object(lan, "GameRelay") as relay, \
+                patch.object(lan, "open_room", return_value=room) as open_room, \
                 patch.object(lan.run_configs, "get", return_value=config), \
                 patch("sc2.windows_env.set_client_window") as window, \
                 patch.object(lan.load_policy(ai), "decide", return_value=([action], {}, {"mode":"ai"})) as decide, \
                 patch.object(lan, "replay_speed", return_value=4, side_effect=ValueError("bad replay") if bad_replay else None), \
                 patch.object(lan.time, "sleep"), contextlib.redirect_stdout(io.StringIO()), \
                 contextlib.redirect_stderr(io.StringIO()):
-            result = lan.play(args)
+            relay.return_value.error = None
+            result = lan.play(args, room=room if existing_room else None)
+        if remote:
+            relay.assert_called_once_with("127.0.0.1", "192.168.1.2", args.port, role == "host")
+            relay.return_value.close.assert_called_once()
+            room.barrier.assert_any_call("transport_ready", 0)
+            self.assertEqual(controller.join_game.call_args.args[0].host_ip, "127.0.0.1")
+        else:
+            relay.assert_not_called()
+        if existing_room:
+            open_room.assert_not_called()
+        else:
+            open_room.assert_called_once_with(args)
         config.start.assert_called_once()
         process.close.assert_called_once()
         room.socket.close.assert_called_once()
         self.assertEqual(config.start.call_args.kwargs["host"], "127.0.0.1")
         if role == "host":
-            self.assertTrue(controller.create_game.call_args.args[0].realtime)
+            self.assertEqual(controller.create_game.call_args.args[0].realtime, speed in lan.NATIVE_SPEEDS)
         else:
             controller.create_game.assert_not_called()
         if lan.sys.platform == "win32":
+            self.assertIn(f"-sound={'true' if sound else 'false'}", config.start.call_args.kwargs["extra_args"])
+            self.assertIn(f"-soundglobal={'true' if sound else 'false'}", config.start.call_args.kwargs["extra_args"])
+            self.assertIn(f"-music={'true' if sound else 'false'}", config.start.call_args.kwargs["extra_args"])
             self.assertEqual(config.start.call_args.kwargs["full_screen"],
                              not (args.hidden or args.no_window or args.windowed))
             if args.hidden or args.no_window:
                 self.assertEqual([call.args for call in window.call_args_list], [(123,)] + [(123, None)] * controller.join_game.call_count)
-        controller.step.assert_not_called()
+        if speed in lan.NATIVE_SPEEDS:
+            controller.step.assert_not_called()
+        else:
+            controller.step.assert_called_once_with(1)
         manifest = json.loads(((directory if rounds == 1 else directory/"round-001")/"manifest.json").read_text())
         return result, manifest, controller, decide, room
+
+    def test_cross_machine_relay_used_and_closed_on_success_or_disconnect(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            for role in ("host", "join"):
+                for disconnect in (False, True):
+                    result, manifest, _, _, _ = self.fake_play("ai", "ai",
+                        Path(temporary)/(role + str(disconnect)), role=role, remote=True,
+                        disconnect=disconnect)
+                    self.assertEqual(result, 2 if disconnect else 0)
+                    self.assertEqual(manifest["game_transport"], "forwarded")
+
+    def test_old_game_protocol_rejected_before_join(self):
+        peer = hello()
+        peer["protocol"] = 3
+        with self.assertRaisesRegex(ValueError, "Incompatible room protocol"):
+            lan.check_hello(hello(), peer)
+
+    def test_local_sound_can_be_enabled_or_muted(self):
+        with patch.object(lan.sys, "platform", "win32"), tempfile.TemporaryDirectory() as temporary:
+            self.assertFalse(lan.arguments(["host"]).sound)
+            self.assertTrue(lan.arguments(["host", "--sound"]).sound)
+            self.assertFalse(lan.arguments(["host", "--sound", "--no-sound"]).sound)
+            for role in ("host", "join"):
+                for sound in (True, False):
+                    result, manifest, _, _, _ = self.fake_play("ai", "ai",
+                        Path(temporary)/(role + str(sound)), role=role, sound=sound)
+                    self.assertEqual(result, 0)
+                    self.assertEqual(manifest["sound"], sound)
+
+    def test_sound_is_rejected_on_unsupported_platform(self):
+        with patch.object(lan.sys, "platform", "linux"), contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                lan.arguments(["host", "--control", "ai", "--no-window", "--sound"])
 
     def test_series_reuses_client_resets_policy_and_records_each_round(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -310,6 +365,59 @@ class LanTests(unittest.TestCase):
             self.assertEqual(result, 2)
             controller.join_game.assert_called_once()
             self.assertFalse((folder / "round-002").exists())
+
+    def test_lobby_reuses_connected_room_and_shows_human_and_ai_windows(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(lan.sys, "platform", "win32"):
+            for role in ("host", "join"):
+                for control in ("human", "ai"):
+                    result, manifest, _, _, _ = self.fake_play(control, "ai", Path(temporary)/(role+control),
+                        role=role, display=[], ai="a4" if control == "ai" else "default", existing_room=True)
+                    self.assertEqual(result, 0)
+                    self.assertFalse(manifest["hidden"])
+                    self.assertFalse(manifest["no_window"])
+
+    def test_host_speed_is_adopted_by_joiner_and_steps_both_clients(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            for role in ("host", "join"):
+                for speed in (0.25, 0.5, 0.75, 1.5, 2):
+                    result, manifest, controller, decide, _ = self.fake_play(
+                        "ai", "human", Path(temporary)/(role+str(speed)), role=role, speed=speed)
+                    self.assertEqual(result, 0)
+                    self.assertEqual(manifest["requested_speed"], speed)
+                    self.assertEqual(manifest["pacing_game_loops_per_wall_second"], 22.4 * speed)
+                    self.assertEqual(manifest["environment_step_mul"], 1)
+                    self.assertEqual(manifest["step_mul"], 4)
+                    self.assertFalse(manifest["realtime"])
+                    controller.step.assert_called_once_with(1)
+                    decide.assert_called_once()
+
+    def test_native_slow_speeds_keep_realtime_and_only_host_configures_map(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            for role in ("host", "join"):
+                for speed in (0.43, 0.57, 0.71, 0.86):
+                    result, manifest, controller, _, _ = self.fake_play(
+                        "ai", "ai", Path(temporary)/(role+str(speed)), role=role, speed=speed)
+                    self.assertEqual(result, 0)
+                    self.assertTrue(manifest["realtime"])
+                    self.assertEqual(manifest["native_speed"], lan.NATIVE_SPEEDS[speed])
+                    self.assertIsNone(manifest["pacing_game_loops_per_wall_second"])
+                    controller.step.assert_not_called()
+                    commands = [c.args[0] for c in controller.chat.call_args_list if c.args[0].startswith("LAN speed:")]
+                    self.assertEqual(commands, [f"LAN speed: {lan.NATIVE_SPEEDS[speed]}"] if role == "host" else [])
+
+    def test_speed_is_host_only_and_untrusted_values_are_rejected(self):
+        self.assertEqual(lan.arguments(["host"]).speed, 1)
+        self.assertIsNone(lan.arguments(["join", "--address", "127.0.0.1"]).speed)
+        for value in ("0", "nan", "3"):
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                lan.arguments(["host", "--speed", value])
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            lan.arguments(["join", "--address", "127.0.0.1", "--speed", "1"])
+        for speed in (None, True, "0.5", 0, float("nan"), 3):
+            with self.assertRaises(ValueError):
+                lan.check_hello(hello(speed=None), hello(speed=speed))
+        with self.assertRaises(ValueError):
+            lan.check_hello(hello(speed=0.5), hello(speed=2))
 
     def test_selected_ai_runs_and_records_identity_across_lan_rounds(self):
         with tempfile.TemporaryDirectory() as temporary:

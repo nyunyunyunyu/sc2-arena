@@ -83,16 +83,19 @@ class WindowsSetupTests(unittest.TestCase):
         (self.root/"scripts/setup").mkdir(parents=True)
         shutil.copy2(ROOT/"scripts/start-windows.ps1", self.root/"scripts/start-windows.ps1")
         shutil.copy2(ROOT/"start.cmd", self.root/"start.cmd")
+        shutil.copy2(ROOT/"lobby.vbs", self.root/"lobby.vbs")
         shutil.copy2(ROOT/"scripts/setup/config.ps1", self.root/"scripts/setup/config.ps1")
-        (self.root/"scripts/setup/windows.ps1").write_text("Write-Output 'SETUP-CALLED'\n", encoding="ascii")
+        (self.root/"scripts/setup/windows.ps1").write_text("[Console]::Error.WriteLine('setup diagnostic')\nWrite-Output 'SETUP-CALLED'\n", encoding="ascii")
         scripts = self.root/".deps/sc2-win/Scripts"
         scripts.mkdir(parents=True)
         shutil.copy2(sys.executable, scripts/"python.exe")
+        shutil.copy2(Path(sys.executable).with_name("pythonw.exe"), scripts/"pythonw.exe")
         shutil.copy2(Path(sys.prefix)/"pyvenv.cfg", scripts.parent/"pyvenv.cfg")
         (self.root/"sc2").mkdir()
         (self.root/"sc2/__init__.py").write_text("", encoding="ascii")
-        stub = "import json, os, sys\nprint('LAUNCHED=' + json.dumps({'module':__spec__.name,'args':sys.argv[1:],'path':os.getenv('SC2PATH')}))\n"
-        for module in ("run", "lan"):
+        stub = "import json, os, sys, pathlib\nprint('LAUNCHED=' + json.dumps({'module':__spec__.name,'args':sys.argv[1:],'path':os.getenv('SC2PATH')}))\n"
+        stub += "if os.getenv('SC2_TEST_LAUNCH_LOG'): pathlib.Path(os.environ['SC2_TEST_LAUNCH_LOG']).write_text(json.dumps({'module':__spec__.name,'args':sys.argv[1:],'executable':sys.executable}))\n"
+        for module in ("run", "lan", "lan_ui"):
             (self.root/f"sc2/{module}.py").write_text(stub, encoding="ascii")
         (self.root/".env").write_text('SC2PATH="' + str(self.game) + '"\n', encoding="utf-8")
 
@@ -100,6 +103,8 @@ class WindowsSetupTests(unittest.TestCase):
         self.make_launcher()
         cases = [([], "sc2.run"), (["host", "--control", "ai", "--key", "room password", "--no-window"], "sc2.lan"),
                  (["duel", "--no-window"], "sc2.run"),
+                 (["lobby"], "sc2.lan_ui"),
+                 (["lobby", "--windowed", "--port", "14580"], "sc2.lan_ui"),
                  (["join", "--address", "127.0.0.1"], "sc2.lan"),
                  (["watch", "--replay", "replay file.SC2Replay", "--windowed"], "sc2.run")]
         for arguments, module in cases:
@@ -108,7 +113,10 @@ class WindowsSetupTests(unittest.TestCase):
                     str(self.root/"scripts/start-windows.ps1"), *arguments], cwd=self.temporary.name,
                     input="", encoding="utf-8", errors="replace", capture_output=True, env=self.environment, timeout=60)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertIn("SETUP-CALLED", result.stdout)
+                if arguments and arguments[0] == "lobby":
+                    self.assertIn("SETUP-CALLED", (self.root/"sc2/runs/lobby-setup.log").read_text(encoding="utf-8-sig"))
+                else:
+                    self.assertIn("SETUP-CALLED", result.stdout)
                 payload = json.loads(next(s[9:] for s in result.stdout.splitlines() if s.startswith("LAUNCHED=")))
                 self.assertEqual(payload["module"], module)
                 self.assertEqual(payload["path"], str(self.game))
@@ -118,6 +126,9 @@ class WindowsSetupTests(unittest.TestCase):
                 elif arguments[0] == "watch":
                     self.assertIn("--windowed", payload["args"])
                     self.assertEqual(payload["args"][2], str(Path(self.temporary.name)/"replay file.SC2Replay"))
+                elif arguments[0] == "lobby":
+                    self.assertEqual(payload["args"], arguments[1:] + ["--version", "latest"])
+                    self.assertNotIn("Choose AI:", result.stdout)
                 else:
                     self.assertEqual(payload["args"], arguments + (["--ai", "default"] if "ai" in arguments else []) + ["--version", "latest"])
 
@@ -161,6 +172,33 @@ class WindowsSetupTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('"module": "sc2.lan"', result.stdout)
         self.assertEqual((self.root/".env").read_text(encoding="utf-8"), "")
+
+    def test_lobby_double_click_wrapper_uses_windowless_python(self):
+        self.make_launcher()
+        launch_log = self.root/"launch.json"
+        environment = dict(self.environment, SC2_TEST_LAUNCH_LOG=str(launch_log))
+        result = subprocess.run(["wscript.exe", "//B", "//NoLogo", str(self.root/"lobby.vbs")],
+            cwd=self.temporary.name, capture_output=True, env=environment, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(launch_log.read_text())
+        self.assertEqual(payload["module"], "sc2.lan_ui")
+        self.assertTrue(payload["executable"].lower().endswith("pythonw.exe"))
+        self.assertEqual(payload["args"], ["--version", "latest"])
+
+    def test_lobby_waits_for_real_gui_process_and_ignores_stale_exit_code(self):
+        self.make_launcher()
+        finished = self.root/"gui-finished.txt"
+        (self.root/"sc2/lan_ui.py").write_text(
+            "import pathlib, time\ntime.sleep(0.5)\n"
+            f"pathlib.Path({str(finished)!r}).write_text('finished')\n", encoding="utf-8")
+        code = "$global:LASTEXITCODE=37; & " + ps_string(self.root/"scripts/start-windows.ps1") + " lobby"
+        encoded = base64.b64encode(code.encode("utf-16-le")).decode("ascii")
+        result = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+            "-EncodedCommand", encoded], cwd=self.temporary.name, capture_output=True,
+            env=self.environment, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(finished.read_text(), "finished")
+
 
 
 if __name__ == "__main__":
